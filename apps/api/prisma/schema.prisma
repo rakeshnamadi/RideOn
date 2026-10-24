@@ -1,0 +1,1298 @@
+// RideOn — community-governed auto transportation platform
+// Conventions:
+//  * Money is stored as integer paise (INR minor units) in *Paise columns. Never floats.
+//  * All DateTime values are stored in UTC. Local service time is resolved with the
+//    city's IANA timezone (cities.timezone, default Asia/Kolkata).
+//  * Coordinates are WGS84 doubles. Service-area polygons are stored as a JSON array
+//    of [lat, lng] pairs because Prisma has no native MySQL spatial type support.
+//  * "*Key" nullable unique columns (activeSeatKey, successKey) implement partial
+//    unique constraints: they hold a value only while the row is "active", and MySQL
+//    allows many NULLs in a unique index.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Identity & authorization ─────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+model User {
+  id                String     @id @default(cuid())
+  name              String     @db.VarChar(120)
+  email             String?    @unique @db.VarChar(191)
+  phone             String     @unique @db.VarChar(20)
+  passwordHash      String     @db.VarChar(255)
+  status            UserStatus @default(ACTIVE)
+  suspensionReason  String?    @db.VarChar(500)
+  preferredLanguage String     @default("en") @db.VarChar(10)
+  trustedContactName  String?  @db.VarChar(120)
+  trustedContactPhone String?  @db.VarChar(20)
+  failedLoginCount  Int        @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  roles              UserRole[]
+  sessions           Session[]
+  consents           UserConsent[]
+  passwordResets     PasswordResetToken[]
+  communityAdminRoles CommunityAdmin[]     @relation("CommunityAdminUser")
+  driver             Driver?
+  bookings           Booking[]            @relation("PassengerBookings")
+  notifications      Notification[]
+  ratingsGiven       Rating[]             @relation("RatingRater")
+  complaintsRaised   Complaint[]          @relation("ComplaintRaisedBy")
+  supportTickets     SupportTicket[]      @relation("TicketOwner")
+  auditLogs          AuditLog[]
+  proposals          GovernanceProposal[] @relation("ProposalAuthor")
+  votes              GovernanceVote[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  key         String           @unique @db.VarChar(50) // SUPER_ADMIN, COMMUNITY_ADMIN, DRIVER, PASSENGER
+  name        String           @db.VarChar(100)
+  description String?          @db.VarChar(255)
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique @db.VarChar(100)
+  description String?          @db.VarChar(255)
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId    String
+  roleId    String
+  grantedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+/// Refresh-token sessions. Only a SHA-256 hash of the token is stored.
+/// Tokens rotate on every refresh; reuse of a rotated token revokes the whole family.
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenHash    String    @unique @db.Char(64)
+  familyId     String    @db.VarChar(30)
+  userAgent    String?   @db.VarChar(255)
+  ipAddress    String?   @db.VarChar(64)
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  revokeReason String?   @db.VarChar(50)
+  rotatedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("sessions")
+}
+
+enum ConsentType {
+  TERMS_OF_SERVICE
+  PRIVACY_POLICY
+  LOCATION_SHARING
+}
+
+model UserConsent {
+  id          String      @id @default(cuid())
+  userId      String
+  consentType ConsentType
+  version     String      @db.VarChar(20)
+  grantedAt   DateTime    @default(now())
+  revokedAt   DateTime?
+  ipAddress   String?     @db.VarChar(64)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consentType])
+  @@map("user_consents")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.Char(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ───────────────────────────── Cities & communities ─────────────────────────────
+
+model City {
+  id          String      @id @default(cuid())
+  name        String      @db.VarChar(100)
+  state       String      @db.VarChar(100)
+  timezone    String      @default("Asia/Kolkata") @db.VarChar(50)
+  centerLat   Float
+  centerLng   Float
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  communities Community[]
+
+  @@unique([name, state])
+  @@map("cities")
+}
+
+enum CommunityStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+model Community {
+  id                 String          @id @default(cuid())
+  cityId             String
+  name               String          @db.VarChar(150)
+  slug               String          @unique @db.VarChar(100)
+  registrationNumber String?         @db.VarChar(100)
+  description        String?         @db.Text
+  contactPhone       String?         @db.VarChar(20)
+  contactEmail       String?         @db.VarChar(191)
+  centerLat          Float
+  centerLng          Float
+  status             CommunityStatus @default(PENDING)
+  statusReason       String?         @db.VarChar(500)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  city            City                   @relation(fields: [cityId], references: [id])
+  admins          CommunityAdmin[]
+  memberships     CommunityMembership[]
+  serviceAreas    CommunityServiceArea[]
+  policy          CommunityPolicy?
+  proposals       GovernanceProposal[]
+  pickupPoints    PickupPoint[]
+  sharedRoutes    SharedRoute[]
+  fareRules       FareRule[]
+  fareHistory     FareHistory[]
+  vehicles        Vehicle[]
+  bookings        Booking[]
+  tripInstances   SharedTripInstance[]
+  complaints      Complaint[]
+  announcements   Announcement[]
+  statements      CommunityStatement[]
+  feeRecords      PlatformFeeRecord[]
+  quotes          FareQuote[]
+  availability    DriverAvailability[]
+
+  @@index([cityId, status])
+  @@map("communities")
+}
+
+/// Community-scoped administrative roles. Permissions per role are defined in
+/// apps/api/src/modules/auth/permissions.ts (COMMUNITY_ROLE_PERMISSIONS).
+enum CommunityRole {
+  HEAD
+  ADMIN
+  APPROVER
+  OPERATOR
+}
+
+model CommunityAdmin {
+  id           String        @id @default(cuid())
+  communityId  String
+  userId       String
+  role         CommunityRole
+  active       Boolean       @default(true)
+  assignedById String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  community    Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user         User          @relation("CommunityAdminUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+  @@index([userId])
+  @@map("community_admins")
+}
+
+enum MembershipStatus {
+  APPLIED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  LEFT
+}
+
+model CommunityMembership {
+  id           String           @id @default(cuid())
+  communityId  String
+  driverId     String
+  status       MembershipStatus @default(APPLIED)
+  applicationNote String?       @db.VarChar(1000)
+  decisionNote String?          @db.VarChar(1000)
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  community    Community        @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  driver       Driver           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, driverId])
+  @@index([communityId, status])
+  @@map("community_memberships")
+}
+
+model CommunityServiceArea {
+  id          String    @id @default(cuid())
+  communityId String
+  name        String    @db.VarChar(150)
+  /// JSON array of [lat, lng] vertices (closed implicitly).
+  polygon     Json
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, active])
+  @@map("community_service_areas")
+}
+
+enum FareApprovalMode {
+  SINGLE_APPROVER
+  MULTI_APPROVER
+  PLATFORM_REVIEW
+}
+
+/// Governance & operating policy for a community. Platform-imposed limits
+/// (e.g. maximum fare increase) are validated on every fare proposal.
+model CommunityPolicy {
+  id                          String           @id @default(cuid())
+  communityId                 String           @unique
+  fareApprovalMode            FareApprovalMode @default(SINGLE_APPROVER)
+  requiredApprovals           Int              @default(1)
+  allowSelfApproval           Boolean          @default(false)
+  maxFareIncreasePercent      Int              @default(25)
+  minNoticeHours              Int              @default(0)
+  allowDistanceFares          Boolean          @default(true)
+  communityFeeBps             Int              @default(0)
+  cancellationFreeWindowSec   Int              @default(120)
+  cancellationFeePaise        Int              @default(2000)
+  driverOfferTimeoutSec       Int              @default(30)
+  bookingRequestTimeoutSec    Int              @default(300)
+  seatHoldMinutes             Int              @default(5)
+  updatedAt                   DateTime         @updatedAt
+  community                   Community        @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@map("community_policies")
+}
+
+enum ProposalType {
+  FARE_CHANGE
+  POLICY_CHANGE
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+model GovernanceProposal {
+  id                     String         @id @default(cuid())
+  communityId            String
+  type                   ProposalType
+  title                  String         @db.VarChar(200)
+  rationale              String?        @db.Text
+  status                 ProposalStatus @default(PENDING)
+  proposedById           String
+  requiredApprovals      Int
+  requiresPlatformReview Boolean        @default(false)
+  platformDecision       String?        @db.VarChar(20) // APPROVED | REJECTED
+  platformReviewerId     String?
+  platformReviewNote     String?        @db.VarChar(1000)
+  effectiveFrom          DateTime
+  decidedAt              DateTime?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  community              Community      @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  proposedBy             User           @relation("ProposalAuthor", fields: [proposedById], references: [id])
+  votes                  GovernanceVote[]
+  fareProposal           FareProposal?
+
+  @@index([communityId, status])
+  @@index([status, requiresPlatformReview])
+  @@map("governance_proposals")
+}
+
+enum VoteDecision {
+  APPROVE
+  REJECT
+}
+
+model GovernanceVote {
+  id         String             @id @default(cuid())
+  proposalId String
+  voterId    String
+  decision   VoteDecision
+  comment    String?            @db.VarChar(1000)
+  createdAt  DateTime           @default(now())
+  proposal   GovernanceProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  voter      User               @relation(fields: [voterId], references: [id])
+
+  @@unique([proposalId, voterId])
+  @@map("governance_votes")
+}
+
+// ───────────────────────────── Drivers & vehicles ─────────────────────────────
+
+enum VerificationStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum DriverStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Driver {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  licenseNumber      String             @unique @db.VarChar(40)
+  licenseExpiry      DateTime
+  verificationStatus VerificationStatus @default(PENDING)
+  verificationNote   String?            @db.VarChar(1000)
+  verifiedById       String?
+  verifiedAt         DateTime?
+  status             DriverStatus       @default(ACTIVE)
+  suspensionReason   String?            @db.VarChar(500)
+  ratingSum          Int                @default(0)
+  ratingCount        Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents          DriverDocument[]
+  memberships        CommunityMembership[]
+  vehicleAssignments DriverVehicleAssignment[]
+  availability       DriverAvailability?
+  location           DriverLocation?
+  bookings           Booking[]
+  assignments        BookingAssignment[]
+  tripInstances      SharedTripInstance[]
+  ratingsReceived    Rating[]                   @relation("RatingDriver")
+  complaints         Complaint[]                @relation("ComplaintAgainstDriver")
+
+  @@index([verificationStatus])
+  @@map("drivers")
+}
+
+enum DocumentType {
+  DRIVING_LICENSE
+  VEHICLE_RC
+  PERMIT
+  INSURANCE
+  ID_PROOF
+  PHOTO
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model DriverDocument {
+  id           String         @id @default(cuid())
+  driverId     String
+  type         DocumentType
+  storageKey   String         @unique @db.VarChar(100)
+  originalName String         @db.VarChar(255)
+  mimeType     String         @db.VarChar(100)
+  sizeBytes    Int
+  status       DocumentStatus @default(PENDING)
+  reviewNote   String?        @db.VarChar(500)
+  reviewedById String?
+  reviewedAt   DateTime?
+  expiresAt    DateTime?
+  createdAt    DateTime       @default(now())
+  driver       Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, type])
+  @@map("driver_documents")
+}
+
+enum VehicleStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  INACTIVE
+}
+
+model Vehicle {
+  id                 String        @id @default(cuid())
+  communityId        String
+  registrationNumber String        @unique @db.VarChar(20)
+  make               String        @db.VarChar(60)
+  model              String        @db.VarChar(60)
+  color              String?       @db.VarChar(30)
+  year               Int?
+  fuelType           String?       @db.VarChar(20)
+  /// Maximum passenger seats approved by the community (permit-bound). Drivers cannot change it.
+  seatCapacity       Int           @default(3)
+  permitNumber       String?       @db.VarChar(60)
+  permitExpiry       DateTime?
+  insuranceExpiry    DateTime?
+  status             VehicleStatus @default(PENDING)
+  reviewNote         String?       @db.VarChar(500)
+  approvedById       String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  community          Community     @relation(fields: [communityId], references: [id])
+  assignments        DriverVehicleAssignment[]
+  bookings           Booking[]
+  tripInstances      SharedTripInstance[]
+
+  @@index([communityId, status])
+  @@map("vehicles")
+}
+
+model DriverVehicleAssignment {
+  id           String    @id @default(cuid())
+  driverId     String
+  vehicleId    String
+  active       Boolean   @default(true)
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+  driver       Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, active])
+  @@index([vehicleId, active])
+  @@map("driver_vehicle_assignments")
+}
+
+enum AvailabilityStatus {
+  OFFLINE
+  ONLINE
+  ON_TRIP
+}
+
+model DriverAvailability {
+  id          String             @id @default(cuid())
+  driverId    String             @unique
+  communityId String?
+  status      AvailabilityStatus @default(OFFLINE)
+  /// Pickup point (auto stand) the driver is queued at, if any.
+  standId     String?
+  queuedAt    DateTime?
+  updatedAt   DateTime           @updatedAt
+  driver      Driver             @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  community   Community?         @relation(fields: [communityId], references: [id])
+  stand       PickupPoint?       @relation(fields: [standId], references: [id])
+
+  @@index([communityId, status])
+  @@index([standId, queuedAt])
+  @@map("driver_availability")
+}
+
+/// Latest-known location only (one row per driver). Rows are deleted when the
+/// driver goes offline and are purged by a job when stale. No location history
+/// is retained.
+model DriverLocation {
+  driverId  String   @id
+  lat       Float
+  lng       Float
+  heading   Float?
+  accuracyM Float?
+  updatedAt DateTime @updatedAt
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
+  @@map("driver_locations")
+}
+
+// ───────────────────────────── Places, routes, schedules ─────────────────────────────
+
+model PickupPoint {
+  id          String    @id @default(cuid())
+  communityId String
+  name        String    @db.VarChar(150)
+  description String?   @db.VarChar(500)
+  lat         Float
+  lng         Float
+  isStand     Boolean   @default(false)
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  routeStops  RouteStop[]
+  queuedDrivers DriverAvailability[]
+
+  @@index([communityId, active])
+  @@map("pickup_points")
+}
+
+enum RouteStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+}
+
+model SharedRoute {
+  id                     String      @id @default(cuid())
+  communityId            String
+  code                   String      @db.VarChar(20)
+  name                   String      @db.VarChar(150)
+  description            String?     @db.VarChar(1000)
+  status                 RouteStatus @default(DRAFT)
+  /// Maximum seats sold on any departure. Must not exceed approved vehicle capacity.
+  maxSeats               Int
+  bookingCutoffMinutes   Int         @default(5)
+  cancellationCutoffMinutes Int      @default(15)
+  boardingRules          String?     @db.VarChar(1000)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  community              Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  stops                  RouteStop[]
+  schedules              RouteSchedule[]
+  fareRules              FareRule[]
+  tripInstances          SharedTripInstance[]
+
+  @@unique([communityId, code])
+  @@index([communityId, status])
+  @@map("shared_routes")
+}
+
+model RouteStop {
+  id            String      @id @default(cuid())
+  routeId       String
+  pickupPointId String
+  sequence      Int
+  /// Minutes after departure the auto is expected at this stop.
+  offsetMinutes Int         @default(0)
+  route         SharedRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  pickupPoint   PickupPoint @relation(fields: [pickupPointId], references: [id])
+  pickups       Booking[]   @relation("BookingPickupStop")
+  drops         Booking[]   @relation("BookingDropStop")
+
+  @@unique([routeId, sequence])
+  @@unique([routeId, pickupPointId])
+  @@map("route_stops")
+}
+
+model RouteSchedule {
+  id            String      @id @default(cuid())
+  routeId       String
+  /// Local departure time "HH:MM" in the community city's timezone.
+  departureTime String      @db.Char(5)
+  /// Bitmask of weekdays: bit 0 = Sunday … bit 6 = Saturday. 127 = every day.
+  daysOfWeek    Int         @default(127)
+  seatCapacity  Int
+  validFrom     DateTime
+  validTo       DateTime?
+  active        Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  route         SharedRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  tripInstances SharedTripInstance[]
+
+  @@index([routeId, active])
+  @@map("route_schedules")
+}
+
+enum TripInstanceStatus {
+  SCHEDULED
+  BOARDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model SharedTripInstance {
+  id           String             @id @default(cuid())
+  routeId      String
+  scheduleId   String
+  communityId  String
+  departureAt  DateTime
+  capacity     Int
+  seatsBooked  Int                @default(0)
+  driverId     String?
+  vehicleId    String?
+  status       TripInstanceStatus @default(SCHEDULED)
+  cancelReason String?            @db.VarChar(500)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  route        SharedRoute        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  schedule     RouteSchedule      @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  community    Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  driver       Driver?            @relation(fields: [driverId], references: [id])
+  vehicle      Vehicle?           @relation(fields: [vehicleId], references: [id])
+  reservations SeatReservation[]
+  bookings     Booking[]
+  events       TripEvent[]
+
+  @@unique([scheduleId, departureAt])
+  @@index([routeId, departureAt])
+  @@index([driverId, departureAt])
+  @@map("shared_trip_instances")
+}
+
+enum SeatStatus {
+  HELD
+  CONFIRMED
+  BOARDED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  NO_SHOW
+}
+
+model SeatReservation {
+  id             String             @id @default(cuid())
+  tripInstanceId String
+  bookingId      String
+  seatNumber     Int
+  status         SeatStatus         @default(HELD)
+  holdExpiresAt  DateTime?
+  /// "<tripInstanceId>:<seatNumber>" while the seat is HELD/CONFIRMED/BOARDED, NULL otherwise.
+  /// The unique index guarantees a seat can never be allocated twice.
+  activeSeatKey  String?            @unique @db.VarChar(64)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  tripInstance   SharedTripInstance @relation(fields: [tripInstanceId], references: [id], onDelete: Cascade)
+  booking        Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([tripInstanceId, status])
+  @@index([bookingId])
+  @@index([status, holdExpiresAt])
+  @@map("seat_reservations")
+}
+
+// ───────────────────────────── Fares ─────────────────────────────
+
+enum ServiceType {
+  REGULAR
+  SHARED
+}
+
+/// A versioned, effective-dated fare rule. Rules are never edited in place:
+/// approved proposals create a new version and close the previous one.
+model FareRule {
+  id                   String       @id @default(cuid())
+  communityId          String
+  serviceType          ServiceType
+  sharedRouteId        String?
+  version              Int
+  baseFarePaise        Int          @default(0)
+  baseDistanceMeters   Int          @default(0)
+  perKmPaise           Int          @default(0)
+  minimumFarePaise     Int          @default(0)
+  waitingPerMinutePaise Int         @default(0)
+  freeWaitingMinutes   Int          @default(3)
+  perSeatPaise         Int          @default(0)
+  perStopPaise         Int          @default(0)
+  nightSurchargeBps    Int          @default(0)
+  nightStartHour       Int          @default(22)
+  nightEndHour         Int          @default(5)
+  effectiveFrom        DateTime
+  effectiveTo          DateTime?
+  proposalId           String?
+  createdAt            DateTime     @default(now())
+  community            Community    @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  sharedRoute          SharedRoute? @relation(fields: [sharedRouteId], references: [id], onDelete: Cascade)
+  bookings             Booking[]
+  quotes               FareQuote[]
+
+  @@index([communityId, serviceType, effectiveFrom])
+  @@index([sharedRouteId, effectiveFrom])
+  @@map("fare_rules")
+}
+
+model FareProposal {
+  id                    String             @id @default(cuid())
+  proposalId            String             @unique
+  serviceType           ServiceType
+  sharedRouteId         String?
+  previousFareRuleId    String?
+  baseFarePaise         Int                @default(0)
+  baseDistanceMeters    Int                @default(0)
+  perKmPaise            Int                @default(0)
+  minimumFarePaise      Int                @default(0)
+  waitingPerMinutePaise Int                @default(0)
+  freeWaitingMinutes    Int                @default(3)
+  perSeatPaise          Int                @default(0)
+  perStopPaise          Int                @default(0)
+  nightSurchargeBps     Int                @default(0)
+  nightStartHour        Int                @default(22)
+  nightEndHour          Int                @default(5)
+  appliedFareRuleId     String?
+  proposal              GovernanceProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@map("fare_proposals")
+}
+
+/// Immutable record of every fare change (UPDATE/DELETE blocked by DB triggers).
+model FareHistory {
+  id                 String    @id @default(cuid())
+  communityId        String
+  serviceType        ServiceType
+  sharedRouteId      String?
+  fareRuleId         String
+  previousFareRuleId String?
+  proposalId         String?
+  changedById        String?
+  summary            Json
+  effectiveFrom      DateTime
+  createdAt          DateTime  @default(now())
+  community          Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+  @@map("fare_history")
+}
+
+/// A server-issued price quote. Bookings must reference an unexpired, unused quote,
+/// so the fare the passenger saw is the fare that is charged.
+model FareQuote {
+  id             String      @id @default(cuid())
+  passengerId    String?
+  communityId    String
+  serviceType    ServiceType
+  fareRuleId     String
+  pickupLat      Float
+  pickupLng      Float
+  dropLat        Float
+  dropLng        Float
+  distanceMeters Int
+  durationSeconds Int
+  distanceSource String      @db.VarChar(20) // routing provider or "estimate"
+  seatCount      Int         @default(1)
+  tripInstanceId String?
+  pickupStopId   String?
+  dropStopId     String?
+  farePaise      Int
+  breakdown      Json
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime    @default(now())
+  community      Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  fareRule       FareRule    @relation(fields: [fareRuleId], references: [id])
+
+  @@index([expiresAt])
+  @@map("fare_quotes")
+}
+
+// ───────────────────────────── Bookings ─────────────────────────────
+
+enum BookingType {
+  REGULAR
+  SHARED
+}
+
+/// Booking lifecycle. Regular: REQUESTED → ACCEPTED → ARRIVING → IN_PROGRESS → COMPLETED.
+/// Shared: REQUESTED (seats held) → CONFIRMED → IN_PROGRESS (boarded) → COMPLETED.
+/// Terminal: COMPLETED, CANCELLED, EXPIRED, NO_DRIVER_AVAILABLE, NO_SHOW.
+/// Payment progress (PAYMENT_PENDING / PAYMENT_FAILED …) is tracked in paymentStatus.
+enum BookingStatus {
+  REQUESTED
+  CONFIRMED
+  ACCEPTED
+  ARRIVING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  NO_DRIVER_AVAILABLE
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  NOT_DUE
+  PAYMENT_PENDING
+  PAID
+  PAYMENT_FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  WAIVED
+}
+
+enum PaymentMethod {
+  CASH
+  MOCK_ONLINE
+  ONLINE
+}
+
+model Booking {
+  id                  String        @id @default(cuid())
+  reference           String        @unique @db.VarChar(16)
+  type                BookingType
+  status              BookingStatus @default(REQUESTED)
+  passengerId         String
+  communityId         String
+  driverId            String?
+  vehicleId           String?
+  fareRuleId          String
+  quoteId             String        @unique
+  idempotencyKey      String        @db.VarChar(64)
+  pickupLat           Float
+  pickupLng           Float
+  pickupAddress       String?       @db.VarChar(300)
+  dropLat             Float
+  dropLng             Float
+  dropAddress         String?       @db.VarChar(300)
+  tripInstanceId      String?
+  pickupStopId        String?
+  dropStopId          String?
+  seatCount           Int           @default(1)
+  distanceMeters      Int
+  durationSeconds     Int
+  quotedFarePaise     Int
+  waitingChargePaise  Int           @default(0)
+  cancellationFeePaise Int          @default(0)
+  finalFarePaise      Int?
+  platformFeePaise    Int?
+  communityFeePaise   Int?
+  driverEarningsPaise Int?
+  paymentMethod       PaymentMethod @default(CASH)
+  paymentStatus       PaymentStatus @default(NOT_DUE)
+  /// 4-digit code the passenger shares with the driver to start the trip.
+  startPin            String        @db.Char(4)
+  shareToken          String?       @unique @db.VarChar(64)
+  shareExpiresAt      DateTime?
+  offerRound          Int           @default(0)
+  requestExpiresAt    DateTime?
+  acceptedAt          DateTime?
+  arrivedAt           DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  cancelledById       String?
+  cancelReason        String?       @db.VarChar(500)
+  version             Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  passenger      User                  @relation("PassengerBookings", fields: [passengerId], references: [id])
+  community      Community             @relation(fields: [communityId], references: [id])
+  driver         Driver?               @relation(fields: [driverId], references: [id])
+  vehicle        Vehicle?              @relation(fields: [vehicleId], references: [id])
+  fareRule       FareRule              @relation(fields: [fareRuleId], references: [id])
+  tripInstance   SharedTripInstance?   @relation(fields: [tripInstanceId], references: [id])
+  pickupStop     RouteStop?            @relation("BookingPickupStop", fields: [pickupStopId], references: [id])
+  dropStop       RouteStop?            @relation("BookingDropStop", fields: [dropStopId], references: [id])
+  assignments    BookingAssignment[]
+  statusHistory  BookingStatusHistory[]
+  seats          SeatReservation[]
+  events         TripEvent[]
+  payments       Payment[]
+  rating         Rating[]
+  complaints     Complaint[]
+  feeRecord      PlatformFeeRecord?
+
+  @@unique([passengerId, idempotencyKey])
+  @@index([communityId, status, createdAt])
+  @@index([driverId, status])
+  @@index([passengerId, createdAt])
+  @@index([status, requestExpiresAt])
+  @@index([tripInstanceId])
+  @@map("bookings")
+}
+
+enum AssignmentStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+model BookingAssignment {
+  id          String           @id @default(cuid())
+  bookingId   String
+  driverId    String
+  round       Int
+  status      AssignmentStatus @default(OFFERED)
+  distanceMeters Int?
+  offeredAt   DateTime         @default(now())
+  expiresAt   DateTime
+  respondedAt DateTime?
+  booking     Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  driver      Driver           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, driverId])
+  @@index([driverId, status])
+  @@index([status, expiresAt])
+  @@map("booking_assignments")
+}
+
+model BookingStatusHistory {
+  id         String         @id @default(cuid())
+  bookingId  String
+  fromStatus BookingStatus?
+  toStatus   BookingStatus
+  actorId    String?
+  actorType  String         @db.VarChar(20) // PASSENGER | DRIVER | ADMIN | SYSTEM
+  reason     String?        @db.VarChar(500)
+  createdAt  DateTime       @default(now())
+  booking    Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, createdAt])
+  @@map("booking_status_history")
+}
+
+model TripEvent {
+  id             String              @id @default(cuid())
+  bookingId      String?
+  tripInstanceId String?
+  type           String              @db.VarChar(40) // SOS, ROUTE_DEVIATION, BOARDED, NO_SHOW, TRIP_SHARED, ...
+  note           String?             @db.VarChar(1000)
+  lat            Float?
+  lng            Float?
+  actorId        String?
+  createdAt      DateTime            @default(now())
+  booking        Booking?            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  tripInstance   SharedTripInstance? @relation(fields: [tripInstanceId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([tripInstanceId])
+  @@index([type, createdAt])
+  @@map("trip_events")
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  bookingId String
+  raterId   String
+  driverId  String
+  score     Int
+  comment   String?  @db.VarChar(1000)
+  createdAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  rater     User     @relation("RatingRater", fields: [raterId], references: [id])
+  driver    Driver   @relation("RatingDriver", fields: [driverId], references: [id])
+
+  @@unique([bookingId, raterId])
+  @@index([driverId])
+  @@map("ratings")
+}
+
+enum ComplaintKind {
+  COMPLAINT
+  DISPUTE
+  APPEAL
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+  ESCALATED
+}
+
+model Complaint {
+  id              String          @id @default(cuid())
+  reference       String          @unique @db.VarChar(16)
+  kind            ComplaintKind   @default(COMPLAINT)
+  communityId     String
+  bookingId       String?
+  raisedById      String
+  againstDriverId String?
+  category        String          @db.VarChar(50)
+  description     String          @db.Text
+  status          ComplaintStatus @default(OPEN)
+  resolution      String?         @db.Text
+  handledById     String?
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  community       Community       @relation(fields: [communityId], references: [id])
+  booking         Booking?        @relation(fields: [bookingId], references: [id])
+  raisedBy        User            @relation("ComplaintRaisedBy", fields: [raisedById], references: [id])
+  againstDriver   Driver?         @relation("ComplaintAgainstDriver", fields: [againstDriverId], references: [id])
+
+  @@index([communityId, status])
+  @@index([raisedById])
+  @@map("complaints")
+}
+
+// ───────────────────────────── Payments & revenue ─────────────────────────────
+
+enum PaymentRecordStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model Payment {
+  id               String              @id @default(cuid())
+  bookingId        String
+  amountPaise      Int
+  method           PaymentMethod
+  provider         String              @db.VarChar(30) // cash | mock | <provider>
+  providerRef      String?             @unique @db.VarChar(100)
+  status           PaymentRecordStatus @default(CREATED)
+  /// Set to bookingId once SUCCEEDED; unique index prevents double-charging a booking.
+  successKey       String?             @unique @db.VarChar(64)
+  idempotencyKey   String              @unique @db.VarChar(100)
+  processingFeePaise Int               @default(0)
+  verifiedVia      String?             @db.VarChar(30) // DRIVER_CASH_CONFIRMATION | MOCK_CHECKOUT | WEBHOOK
+  failureReason    String?             @db.VarChar(255)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  booking          Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  refunds          Refund[]
+
+  @@index([bookingId])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model Refund {
+  id          String       @id @default(cuid())
+  paymentId   String
+  amountPaise Int
+  reason      String       @db.VarChar(500)
+  status      RefundStatus @default(PENDING)
+  createdById String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  payment     Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("refunds")
+}
+
+/// Versioned platform fee configuration. The latest row with effectiveFrom <= now applies.
+model PlatformFeeConfig {
+  id            String      @id @default(cuid())
+  serviceType   ServiceType
+  feeBps        Int
+  flatFeePaise  Int         @default(0)
+  maxFeePaise   Int?
+  effectiveFrom DateTime
+  createdById   String?
+  createdAt     DateTime    @default(now())
+
+  @@index([serviceType, effectiveFrom])
+  @@map("platform_fee_configs")
+}
+
+enum SettlementStatus {
+  UNSETTLED
+  STATEMENTED
+  SETTLED
+}
+
+model PlatformFeeRecord {
+  id                 String           @id @default(cuid())
+  bookingId          String           @unique
+  communityId        String
+  farePaise          Int
+  platformFeePaise   Int
+  communityFeePaise  Int
+  processingFeePaise Int              @default(0)
+  driverNetPaise     Int
+  platformFeeBps     Int
+  communityFeeBps    Int
+  settlementStatus   SettlementStatus @default(UNSETTLED)
+  statementId        String?
+  createdAt          DateTime         @default(now())
+  booking            Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  community          Community        @relation(fields: [communityId], references: [id])
+  statement          CommunityStatement? @relation(fields: [statementId], references: [id])
+
+  @@index([communityId, createdAt])
+  @@index([statementId])
+  @@map("platform_fee_records")
+}
+
+enum StatementStatus {
+  ISSUED
+  SETTLED
+}
+
+model CommunityStatement {
+  id                String          @id @default(cuid())
+  communityId       String
+  periodStart       DateTime
+  periodEnd         DateTime
+  tripCount         Int
+  totalFarePaise    Int
+  platformFeePaise  Int
+  communityFeePaise Int
+  driverNetPaise    Int
+  status            StatementStatus @default(ISSUED)
+  generatedById     String
+  createdAt         DateTime        @default(now())
+  community         Community       @relation(fields: [communityId], references: [id])
+  feeRecords        PlatformFeeRecord[]
+
+  @@unique([communityId, periodStart, periodEnd])
+  @@map("community_statements")
+}
+
+// ───────────────────────────── Operations ─────────────────────────────
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String    @db.VarChar(50)
+  title     String    @db.VarChar(200)
+  body      String    @db.VarChar(1000)
+  link      String?   @db.VarChar(255)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model Announcement {
+  id            String    @id @default(cuid())
+  communityId   String
+  title         String    @db.VarChar(200)
+  body          String    @db.Text
+  audience      String    @default("ALL") @db.VarChar(20) // ALL | DRIVERS | PASSENGERS
+  publishedById String
+  createdAt     DateTime  @default(now())
+  community     Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+  @@map("announcements")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model SupportTicket {
+  id           String         @id @default(cuid())
+  reference    String         @unique @db.VarChar(16)
+  kind         String         @default("SUPPORT") @db.VarChar(20) // SUPPORT | INCIDENT | SAFETY
+  userId       String
+  communityId  String?
+  bookingId    String?
+  subject      String         @db.VarChar(200)
+  description  String         @db.Text
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(MEDIUM)
+  assignedToId String?
+  resolutionNote String?      @db.Text
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation("TicketOwner", fields: [userId], references: [id])
+
+  @@index([status, priority])
+  @@index([userId])
+  @@map("support_tickets")
+}
+
+model FeatureFlag {
+  key         String   @id @db.VarChar(60)
+  enabled     Boolean  @default(false)
+  description String?  @db.VarChar(255)
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_flags")
+}
+
+model PlatformSetting {
+  key       String   @id @db.VarChar(60)
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+/// Append-only audit trail (UPDATE/DELETE blocked by DB triggers).
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String?
+  actorRole   String?  @db.VarChar(40)
+  communityId String?
+  action      String   @db.VarChar(80)
+  entityType  String   @db.VarChar(50)
+  entityId    String?  @db.VarChar(40)
+  before      Json?
+  after       Json?
+  ipAddress   String?  @db.VarChar(64)
+  requestId   String?  @db.VarChar(64)
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorId], references: [id])
+
+  @@index([communityId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+/// Cache for geocoding responses, honouring provider caching guidance.
+model GeocodeCache {
+  queryHash String   @id @db.Char(64)
+  provider  String   @db.VarChar(30)
+  query     String   @db.VarChar(300)
+  response  Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("geocode_cache")
+}
