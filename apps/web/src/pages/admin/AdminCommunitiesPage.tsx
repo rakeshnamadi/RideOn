@@ -1,0 +1,144 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { Link } from 'react-router-dom';
+import { z } from 'zod';
+import { BaseMap, MapClick, Pin } from '@/components/map';
+import { Button, Card, Checkbox, ConfirmDialog, DataTable, Input, Modal, PageHeader, QueryState, Select, StatusBadge, Tabs, Textarea } from '@/components/ui';
+import { useAction, useApi } from '@/hooks/api';
+import { api } from '@/services/api';
+import type { LatLng } from '@/types';
+import { humanize } from '@/utils/format';
+
+interface Community {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  statusReason: string | null;
+  city: { name: string };
+  policy: { maxFareIncreasePercent: number; allowDistanceFares: boolean; communityFeeBps: number } | null;
+  admins: { id: string; role: string; user: { name: string; phone: string } }[];
+  _count: { memberships: number; bookings: number };
+}
+
+const CreateSchema = z.object({
+  cityId: z.string().min(1, 'Choose a city'),
+  name: z.string().trim().min(3),
+  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9-]{3,100}$/, 'Lowercase letters, digits and dashes'),
+  registrationNumber: z.string().trim().optional(),
+  description: z.string().trim().optional(),
+  contactPhone: z.string().trim().optional(),
+  headPhone: z.string().trim().optional(),
+});
+
+function CreateCommunity({ onDone }: { onDone: () => void }) {
+  const cities = useApi<{ id: string; name: string; centerLat: number; centerLng: number }[]>(['admin', 'cities'], '/admin/cities');
+  const [center, setCenter] = useState<LatLng | null>(null);
+  const form = useForm<z.infer<typeof CreateSchema>>({ resolver: zodResolver(CreateSchema) });
+  const cityId = form.watch('cityId');
+  const city = cities.data?.find((c) => c.id === cityId);
+  const create = useAction(
+    (v: z.infer<typeof CreateSchema>) =>
+      api.post('/admin/communities', { ...v, headPhone: v.headPhone || undefined, registrationNumber: v.registrationNumber || undefined, description: v.description || undefined, contactPhone: v.contactPhone || undefined, centerLat: center!.lat, centerLng: center!.lng }),
+    { invalidate: [['admin', 'communities']], success: 'Community created (pending). Add a service area, then activate it.', onSuccess: onDone },
+  );
+  const e = form.formState.errors;
+  return (
+    <form className="space-y-3" onSubmit={form.handleSubmit((v) => create.mutate(v))} noValidate>
+      <Select label="City" {...form.register('cityId')} error={e.cityId?.message} options={[{ value: '', label: 'Choose…' }, ...(cities.data ?? []).map((c) => ({ value: c.id, label: c.name }))]} />
+      <Input label="Name" {...form.register('name')} error={e.name?.message} />
+      <Input label="Slug" placeholder="jayanagar-autos" {...form.register('slug')} error={e.slug?.message} />
+      <Input label="Registration number (association/society)" {...form.register('registrationNumber')} />
+      <Textarea label="Description" {...form.register('description')} />
+      <Input label="Public contact phone" {...form.register('contactPhone')} />
+      <Input label="Community head's mobile (existing user, optional)" {...form.register('headPhone')} />
+      {city && (
+        <div>
+          <p className="mb-1 text-sm font-medium">Click the map to set the community's centre</p>
+          <BaseMap center={{ lat: city.centerLat, lng: city.centerLng }} zoom={12} className="h-56">
+            <MapClick onClick={setCenter} />
+            {center && <Pin position={center} kind="stand" label="Centre" />}
+          </BaseMap>
+        </div>
+      )}
+      <Button type="submit" disabled={!center} loading={create.isPending}>Create community</Button>
+    </form>
+  );
+}
+
+export default function AdminCommunitiesPage() {
+  const [tab, setTab] = useState<'' | 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED'>('');
+  const q = useApi<Community[]>(['admin', 'communities', tab], '/admin/communities', { status: tab });
+  const [creating, setCreating] = useState(false);
+  const [statusChange, setStatusChange] = useState<{ c: Community; status: string } | null>(null);
+  const [reason, setReason] = useState('');
+  const [policyFor, setPolicyFor] = useState<Community | null>(null);
+  const [policy, setPolicy] = useState({ maxFareIncreasePercent: 25, allowDistanceFares: true, communityFeePercent: 0 });
+  const changeStatus = useAction(() => api.post(`/admin/communities/${statusChange!.c.id}/status`, { status: statusChange!.status, reason: reason || undefined }), {
+    invalidate: [['admin']],
+    success: 'Community status updated',
+    onSuccess: () => { setStatusChange(null); setReason(''); },
+  });
+  const savePolicy = useAction(() => api.put(`/admin/communities/${policyFor!.id}/platform-policy`, { maxFareIncreasePercent: policy.maxFareIncreasePercent, allowDistanceFares: policy.allowDistanceFares, communityFeeBps: Math.round(policy.communityFeePercent * 100) }), {
+    invalidate: [['admin', 'communities']],
+    success: 'Platform limits saved',
+    onSuccess: () => setPolicyFor(null),
+  });
+  return (
+    <div>
+      <PageHeader title="Communities" actions={<Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>New community</Button>} />
+      <Tabs value={tab} onChange={setTab} options={[{ value: '', label: 'All' }, { value: 'PENDING', label: 'Pending' }, { value: 'ACTIVE', label: 'Active' }, { value: 'SUSPENDED', label: 'Suspended' }, { value: 'DEACTIVATED', label: 'Deactivated' }]} />
+      <Card>
+        <QueryState query={q}>
+          {(rows) => (
+            <DataTable
+              rows={rows}
+              rowKey={(r) => r.id}
+              columns={[
+                { header: 'Community', cell: (r) => <><Link to={`/community/${r.id}`} className="font-medium text-brand-700 hover:underline">{r.name}</Link><p className="text-xs text-stone-500">{r.city.name} · {r.slug}</p></> },
+                { header: 'Status', cell: (r) => <><StatusBadge status={r.status} />{r.statusReason && <p className="text-xs text-stone-500">{r.statusReason}</p>}</> },
+                { header: 'Admins', cell: (r) => <span className="text-xs">{r.admins.map((a) => `${a.user.name} (${humanize(a.role)})`).join(', ') || '—'}</span> },
+                { header: 'Drivers', cell: (r) => r._count.memberships },
+                { header: 'Bookings', cell: (r) => r._count.bookings },
+                { header: 'Platform limits', cell: (r) => r.policy && <span className="text-xs">+{r.policy.maxFareIncreasePercent}% max · fee {r.policy.communityFeeBps / 100}%</span> },
+                {
+                  header: '',
+                  cell: (r) => (
+                    <div className="flex flex-wrap gap-1">
+                      {r.status !== 'ACTIVE' && <Button size="sm" onClick={() => setStatusChange({ c: r, status: 'ACTIVE' })}>{r.status === 'PENDING' ? 'Approve' : 'Reactivate'}</Button>}
+                      {r.status === 'ACTIVE' && <Button size="sm" variant="secondary" onClick={() => setStatusChange({ c: r, status: 'SUSPENDED' })}>Suspend</Button>}
+                      {r.status !== 'DEACTIVATED' && <Button size="sm" variant="ghost" onClick={() => setStatusChange({ c: r, status: 'DEACTIVATED' })}>Deactivate</Button>}
+                      <Button size="sm" variant="ghost" onClick={() => { setPolicyFor(r); setPolicy({ maxFareIncreasePercent: r.policy?.maxFareIncreasePercent ?? 25, allowDistanceFares: r.policy?.allowDistanceFares ?? true, communityFeePercent: (r.policy?.communityFeeBps ?? 0) / 100 }); }}>Limits</Button>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          )}
+        </QueryState>
+      </Card>
+      <Modal open={creating} onClose={() => setCreating(false)} title="New community">{creating && <CreateCommunity onDone={() => setCreating(false)} />}</Modal>
+      <ConfirmDialog
+        open={!!statusChange}
+        title={statusChange ? `${humanize(statusChange.status)}: ${statusChange.c.name}` : ''}
+        tone={statusChange?.status === 'ACTIVE' ? 'primary' : 'danger'}
+        confirmLabel="Confirm"
+        loading={changeStatus.isPending}
+        onClose={() => setStatusChange(null)}
+        onConfirm={() => changeStatus.mutate()}
+        message={statusChange?.status === 'ACTIVE' ? 'Passengers will be able to book this community. It must have at least one service area.' : 'Online drivers in this community are taken offline. Trips in progress can finish.'}
+      >
+        {statusChange?.status !== 'ACTIVE' && <Textarea label="Reason (required, shared with community admins)" value={reason} onChange={(e) => setReason(e.target.value)} />}
+      </ConfirmDialog>
+      <Modal open={!!policyFor} onClose={() => setPolicyFor(null)} title={`Platform limits — ${policyFor?.name ?? ''}`} footer={<Button loading={savePolicy.isPending} onClick={() => savePolicy.mutate()}>Save</Button>}>
+        <div className="space-y-3">
+          <Input label="Max fare increase without platform review (%)" type="number" value={policy.maxFareIncreasePercent} onChange={(e) => setPolicy({ ...policy, maxFareIncreasePercent: Number(e.target.value) })} />
+          <Checkbox label="Distance-based fares permitted" checked={policy.allowDistanceFares} onChange={(e) => setPolicy({ ...policy, allowDistanceFares: e.target.checked })} />
+          <Input label="Community fee (% of each fare)" type="number" step="0.5" value={policy.communityFeePercent} onChange={(e) => setPolicy({ ...policy, communityFeePercent: Number(e.target.value) })} />
+        </div>
+      </Modal>
+    </div>
+  );
+}
