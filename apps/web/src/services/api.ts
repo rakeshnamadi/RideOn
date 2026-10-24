@@ -41,27 +41,30 @@ export const tokenStore = {
   },
 };
 
-export async function refreshAccessToken(): Promise<boolean> {
-  refreshing ??= (async () => {
-    try {
-      const res = await fetch('/api/v1/auth/refresh', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'rideon' },
-      });
-      if (!res.ok) {
-        accessToken = null;
-        return false;
-      }
-      const body = (await res.json()) as { data: { accessToken: string } };
-      accessToken = body.data.accessToken;
-      return true;
-    } catch {
+async function doRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'rideon' },
+    });
+    if (!res.ok) {
+      accessToken = null;
       return false;
-    } finally {
-      setTimeout(() => (refreshing = null), 0);
     }
-  })();
+    const body = (await res.json()) as { data: { accessToken: string } };
+    accessToken = body.data.accessToken;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Concurrent callers share one in-flight refresh; the result is never reused after it settles. */
+export function refreshAccessToken(): Promise<boolean> {
+  refreshing ??= doRefresh().finally(() => {
+    refreshing = null;
+  });
   return refreshing;
 }
 

@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react';
-import { createBrowserRouter, Navigate, Outlet, useLocation, useParams } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation, useParams, type RouteObject } from 'react-router-dom';
 import { Spinner } from '@/components/ui';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { CommunityLayout } from '@/layouts/CommunityLayout';
@@ -47,7 +47,7 @@ function AuthHome() {
   return homePage;
 }
 
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     element: <PublicLayout />,
     children: [
@@ -150,6 +150,8 @@ export const router = createBrowserRouter([
     ],
   },
   { path: '*', element: <NotFoundPage /> },
-]);
+];
+
+export const router = createBrowserRouter(routes);
 
 export { homeFor };
