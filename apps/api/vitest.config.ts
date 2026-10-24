@@ -4,9 +4,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./test/setup-env.ts'],
+    globalSetup: ['./test/global-setup.ts'],
     // Integration tests share one MySQL test database, so files run sequentially.
     fileParallelism: false,
     testTimeout: 30_000,
-    hookTimeout: 60_000,
+    hookTimeout: 120_000,
   },
 });

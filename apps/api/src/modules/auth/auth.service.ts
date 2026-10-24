@@ -114,7 +114,8 @@ export async function rotateSession(refreshToken: string, req: Request) {
   const session = await prisma.session.findUnique({ where: { tokenHash }, include: { user: true } });
   if (!session) throw unauthorized('Session not found');
   if (session.rotatedAt || session.revokedAt) {
-    if (session.rotatedAt && !session.revokedAt) {
+    // A rotated token presented again is a replay: revoke every live session in the family.
+    if (session.rotatedAt) {
       await prisma.session.updateMany({
         where: { familyId: session.familyId, revokedAt: null },
         data: { revokedAt: new Date(), revokeReason: 'TOKEN_REUSE' },

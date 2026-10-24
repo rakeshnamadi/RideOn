@@ -10,18 +10,14 @@ import { PrismaClient, type CommunityRole } from '@prisma/client';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { GLOBAL_PERMISSIONS, ROLE_PERMISSIONS, SYSTEM_ROLES } from '../src/modules/auth/permissions.js';
 import { calculateRegularFare } from '../src/modules/fares/fare-engine.js';
 import { calculateFeeSplit } from '../src/modules/payments/fees.js';
 
-if (process.env.NODE_ENV === 'production') {
-  console.error('Refusing to seed demo data in production.');
-  process.exit(1);
-}
-
 export const DEMO_PASSWORD = 'Demo@12345';
-const prisma = new PrismaClient();
+let prisma: PrismaClient;
 const days = (n: number) => new Date(Date.now() + n * 86_400_000);
 
 async function seedRoles() {
@@ -112,7 +108,9 @@ async function driver(
   return { user: u, driver: d, vehicle };
 }
 
-async function main() {
+export async function seedDatabase(client: PrismaClient) {
+  if (process.env.NODE_ENV === 'production') throw new Error('Refusing to seed demo data in production');
+  prisma = client;
   if (await prisma.user.findFirst({ where: { phone: '+919000000001' } })) {
     console.log('Database already seeded — run `npm run db:reset` to start fresh.');
     return;
@@ -307,9 +305,12 @@ async function main() {
   console.log(`Seed complete. Demo password for every account: ${DEMO_PASSWORD} (development only)`);
 }
 
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const client = new PrismaClient();
+  seedDatabase(client)
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    })
+    .finally(() => client.$disconnect());
+}
