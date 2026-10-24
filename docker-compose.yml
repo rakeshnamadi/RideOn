@@ -1,0 +1,54 @@
+# Local stack: MySQL + API + web (nginx serving the built app and proxying /api and /socket.io).
+# Usage:
+#   cp .env.example .env   # set secrets; DATABASE_URL host is overridden below
+#   docker compose up --build
+#   docker compose exec api npx prisma migrate deploy
+#   (demo data: run `npm run db:seed` from a dev checkout pointed at this database —
+#    the seed refuses to run when NODE_ENV=production)
+# Then open http://localhost:8080
+# NOTE: Docker was not available in the environment where this file was written; it is untested.
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: rideon
+      MYSQL_USER: rideon
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-rideon-dev-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rideon-root-dev-password}
+    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_0900_ai_ci', '--default-time-zone=+00:00']
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://rideon:${MYSQL_PASSWORD:-rideon-dev-password}@db:3306/rideon
+      WEB_ORIGIN: http://localhost:8080
+      UPLOAD_DIR: /data/uploads
+      TRUST_PROXY: 1
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '8080:80'
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+  uploads:
