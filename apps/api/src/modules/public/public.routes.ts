@@ -3,6 +3,7 @@ import { prisma } from '../../db.js';
 import { env } from '../../config/env.js';
 import { notFound } from '../../utils/errors.js';
 import { ok, param } from '../../utils/http.js';
+import { DEFAULT_PLATFORM_FEE_BPS } from '../payments/payment.service.js';
 
 export const publicRoutes = Router();
 
@@ -18,7 +19,21 @@ publicRoutes.get('/health', async (_req, res) => {
 
 publicRoutes.get('/config', async (_req, res) => {
   const flags = await prisma.featureFlag.findMany({ select: { key: true, enabled: true } });
+  // Platform fees are public: drivers and passengers should be able to see exactly what the platform takes.
+  const platformFees = Object.fromEntries(
+    await Promise.all(
+      (['REGULAR', 'SHARED'] as const).map(async (serviceType) => {
+        const fee = await prisma.platformFeeConfig.findFirst({
+          where: { serviceType, effectiveFrom: { lte: new Date() } },
+          orderBy: { effectiveFrom: 'desc' },
+          select: { feeBps: true, flatFeePaise: true, maxFeePaise: true },
+        });
+        return [serviceType, fee ?? { feeBps: DEFAULT_PLATFORM_FEE_BPS, flatFeePaise: 0, maxFeePaise: null }];
+      }),
+    ),
+  );
   ok(res, {
+    platformFees,
     paymentMethods: ['CASH', ...(env.PAYMENT_PROVIDER === 'mock' ? ['MOCK_ONLINE'] : [])],
     mockPayments: env.PAYMENT_PROVIDER === 'mock',
     geocoding: env.GEOCODING_PROVIDER !== 'none',

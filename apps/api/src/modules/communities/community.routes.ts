@@ -53,7 +53,7 @@ communityRoutes.get('/:communityId/public', async (req, res) => {
       centerLat: true,
       centerLng: true,
       city: { select: { name: true, state: true, timezone: true } },
-      policy: { select: { cancellationFreeWindowSec: true, cancellationFeePaise: true, allowDistanceFares: true } },
+      policy: { select: { cancellationFreeWindowSec: true, cancellationFeePaise: true, allowDistanceFares: true, communityFeeBps: true } },
       serviceAreas: { where: { active: true }, select: { id: true, name: true, polygon: true } },
       pickupPoints: { where: { active: true }, select: { id: true, name: true, lat: true, lng: true, isStand: true, description: true } },
       sharedRoutes: {

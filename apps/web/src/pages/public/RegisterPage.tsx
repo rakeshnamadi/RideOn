@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { homeFor, useAuth } from '@/app/auth';
 import { Alert, Button, Card, Checkbox, errorMessage, Input, Tabs } from '@/components/ui';
 import { useT } from '@/i18n';
+import { AuthShell } from '@/features/brand/AuthShell';
 
 const Schema = z.object({
   name: z.string().trim().min(2, 'Enter your name'),
@@ -39,9 +40,9 @@ export default function RegisterPage() {
   });
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10">
+    <AuthShell audience={type === 'DRIVER' ? 'driver' : 'passenger'}>
       <Card>
-        <h1 className="text-xl font-semibold">Create your account</h1>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight">Create your account</h1>
         <div className="mt-4">
           <Tabs value={type} onChange={setType} options={[{ value: 'PASSENGER', label: 'I want to ride' }, { value: 'DRIVER', label: 'I drive an auto' }]} />
         </div>
@@ -67,6 +68,6 @@ export default function RegisterPage() {
           </Link>
         </p>
       </Card>
-    </div>
+    </AuthShell>
   );
 }

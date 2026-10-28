@@ -1,18 +1,20 @@
 import { Bus, Gauge, HelpCircle, History, IndianRupee, UserCircle } from 'lucide-react';
+import { useT } from '@/i18n';
 import { ConsoleLayout } from './ConsoleLayout';
 
 export function DriverLayout() {
+  const { t } = useT();
   return (
     <ConsoleLayout
-      title="Driver"
+      title={t('driver.console')}
       notificationsTo="/driver/notifications"
       nav={[
-        { to: '/driver', label: 'Today', icon: Gauge, end: true },
-        { to: '/driver/shared', label: 'Shared departures', icon: Bus },
-        { to: '/driver/earnings', label: 'Earnings', icon: IndianRupee },
-        { to: '/driver/history', label: 'Trip history', icon: History },
-        { to: '/driver/profile', label: 'Profile & documents', icon: UserCircle },
-        { to: '/driver/support', label: 'Help & complaints', icon: HelpCircle },
+        { to: '/driver', label: t('driver.navToday'), icon: Gauge, end: true },
+        { to: '/driver/shared', label: t('driver.navShared'), icon: Bus },
+        { to: '/driver/earnings', label: t('driver.navEarnings'), icon: IndianRupee },
+        { to: '/driver/history', label: t('driver.navHistory'), icon: History },
+        { to: '/driver/profile', label: t('driver.navProfile'), icon: UserCircle },
+        { to: '/driver/support', label: t('driver.navSupport'), icon: HelpCircle },
       ]}
     />
   );

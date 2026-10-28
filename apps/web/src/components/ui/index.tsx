@@ -19,11 +19,11 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'accent';
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-brand-700 text-white hover:bg-brand-800 disabled:bg-brand-700/50',
-  accent: 'bg-accent-400 text-stone-900 hover:bg-accent-500 disabled:opacity-50',
-  secondary: 'bg-white text-stone-800 ring-1 ring-stone-300 hover:bg-stone-100 disabled:opacity-50',
+  primary: 'bg-brand-700 text-white hover:bg-brand-800 disabled:bg-brand-700/40',
+  accent: 'bg-accent-400 text-ink hover:bg-accent-500 disabled:opacity-50',
+  secondary: 'bg-white text-ink ring-1 ring-inset ring-ink/20 hover:bg-sand/60 disabled:opacity-50',
   danger: 'bg-red-700 text-white hover:bg-red-800 disabled:bg-red-700/50',
-  ghost: 'text-stone-700 hover:bg-stone-200/70 disabled:opacity-50',
+  ghost: 'text-ink/80 hover:bg-sand/70 disabled:opacity-50',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -37,13 +37,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { variant = 'primary', size = 'md', loading, icon, className, children, disabled, type = 'button', ...rest },
   ref,
 ) {
-  const sizes = { sm: 'px-2.5 py-1.5 text-sm', md: 'px-4 py-2 text-sm', lg: 'px-5 py-3 text-base' };
+  const sizes = { sm: 'px-3 py-1.5 text-sm', md: 'px-4.5 py-2.5 text-sm', lg: 'px-6 py-3.5 text-base' };
   return (
     <button
       ref={ref}
       type={type}
       disabled={disabled || loading}
-      className={cx('inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed', VARIANTS[variant], sizes[size], className)}
+      className={cx('inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors disabled:cursor-not-allowed', VARIANTS[variant], sizes[size], className)}
       {...rest}
     >
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon}
@@ -55,7 +55,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 // ─────────── Form controls ───────────
 
 const control =
-  'block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-stone-900 ring-1 ring-stone-300 placeholder:text-stone-400 focus:ring-2 focus:ring-brand-600 focus:outline-none disabled:bg-stone-100 aria-[invalid=true]:ring-red-500';
+  'block w-full rounded-xl border-0 bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-inset ring-line placeholder:text-stone-400 focus:ring-2 focus:ring-brand-700 focus:outline-none disabled:bg-sand/50 aria-[invalid=true]:ring-red-600';
 
 interface FieldProps {
   label: string;
@@ -70,7 +70,7 @@ export function Field({ label, error, hint, children, className }: FieldProps) {
   const describedBy = error ? `${id}-err` : hint ? `${id}-hint` : undefined;
   return (
     <div className={className}>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-stone-700">
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-ink/85">
         {label}
       </label>
       {children(id, describedBy)}
@@ -135,10 +135,10 @@ export function Checkbox({ label, ...rest }: InputHTMLAttributes<HTMLInputElemen
 
 export function Card({ children, className, title, actions }: { children: ReactNode; className?: string; title?: ReactNode; actions?: ReactNode }) {
   return (
-    <section className={cx('rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200 sm:p-5', className)}>
+    <section className={cx('rounded-[var(--radius-card)] bg-white p-5 ring-1 ring-line sm:p-6', className)}>
       {(title || actions) && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          {title && <h2 className="text-base font-semibold">{title}</h2>}
+          {title && <h2 className="text-base font-semibold tracking-tight">{title}</h2>}
           {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
       )}
@@ -151,8 +151,8 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-stone-600">{subtitle}</p>}
+        <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">{title}</h1>
+        {subtitle && <p className="mt-1.5 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
@@ -161,9 +161,9 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 export function Stat({ label, value, hint, tone = 'default' }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'default' | 'warn' | 'good' }) {
   return (
-    <div className={cx('rounded-xl bg-white p-4 shadow-sm ring-1', tone === 'warn' ? 'ring-amber-300' : tone === 'good' ? 'ring-brand-100' : 'ring-stone-200')}>
-      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+    <div className={cx('rounded-[var(--radius-card)] p-4 ring-1', tone === 'warn' ? 'bg-accent-100/60 ring-accent-400/60' : tone === 'good' ? 'bg-brand-50 ring-brand-100' : 'bg-white ring-line')}>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
+      <p className="font-display mt-1 text-3xl font-extrabold tabular-nums">{value}</p>
       {hint && <p className="mt-0.5 text-xs text-stone-500">{hint}</p>}
     </div>
   );
@@ -216,7 +216,7 @@ export function Spinner({ label = 'Loading…' }: { label?: string }) {
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-[var(--radius-card)] border border-dashed border-ink/20 px-4 py-10 text-center">
       <Inbox className="size-8 text-stone-400" aria-hidden />
       <p className="font-medium text-stone-800">{title}</p>
       {children && <div className="max-w-md text-sm text-stone-600">{children}</div>}
@@ -364,19 +364,19 @@ export function DataTable<T>({ rows, columns, rowKey, empty = 'Nothing here yet'
   if (rows.length === 0) return <EmptyState title={empty} />;
   return (
     <div className="-mx-4 overflow-x-auto sm:mx-0">
-      <table className="min-w-full divide-y divide-stone-200 text-sm">
+      <table className="min-w-full divide-y divide-line text-sm">
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.header} scope="col" className={cx('whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-stone-500', c.className)}>
+              <th key={c.header} scope="col" className={cx('whitespace-nowrap px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted', c.className)}>
                 {c.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-stone-100">
+        <tbody className="divide-y divide-line/70">
           {rows.map((r) => (
-            <tr key={rowKey(r)} className="hover:bg-stone-50">
+            <tr key={rowKey(r)} className="hover:bg-paper">
               {columns.map((c) => (
                 <td key={c.header} className={cx('px-3 py-2 align-top', c.className)}>
                   {c.cell(r)}
@@ -409,14 +409,14 @@ export function Pagination({ page, totalPages, onPage }: { page: number; totalPa
 
 export function Tabs<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[] }) {
   return (
-    <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto rounded-lg bg-stone-200/60 p-1">
+    <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto rounded-full bg-sand p-1">
       {options.map((o) => (
         <button
           key={o.value}
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
-          className={cx('whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium', value === o.value ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900')}
+          className={cx('whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium', value === o.value ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}
         >
           {o.label}
         </button>

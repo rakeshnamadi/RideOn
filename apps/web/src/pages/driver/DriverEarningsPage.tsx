@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Card, DataTable, Input, PageHeader, QueryState, Stat } from '@/components/ui';
 import { useApi } from '@/hooks/api';
 import { inr } from '@/utils/format';
+import { useT } from '@/i18n';
 
 interface Earnings {
   month: string;
@@ -12,20 +13,21 @@ interface Earnings {
 
 /** Transparent earnings: gross fares, every deduction, and net. */
 export default function DriverEarningsPage() {
+  const { t } = useT();
   const now = new Date();
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const q = useApi<Earnings>(['driver', 'earnings', month], '/drivers/me/earnings', { month });
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
   return (
     <div className="space-y-5">
-      <PageHeader title="Earnings" actions={<Input label="Month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />} />
+      <PageHeader title={t('driver.navEarnings')} subtitle={t('driver.earningsSubtitle')} actions={<Input label="Month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />} />
       <QueryState query={q}>
         {(e) => {
-          const t = e.days.find((d) => d.date === today);
+          const todayRow = e.days.find((d) => d.date === today);
           return (
             <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Stat label="Today (net)" value={inr(t?.driverNetPaise ?? 0)} hint={`${t?.trips ?? 0} trips`} tone="good" />
+                <Stat label="Today (net)" value={inr(todayRow?.driverNetPaise ?? 0)} hint={`${todayRow?.trips ?? 0} trips`} tone="good" />
                 <Stat label="Month fares" value={inr(e.totals.farePaise)} hint={`${e.totals.trips} trips`} />
                 <Stat label="Platform + community fees" value={inr(e.totals.platformFeePaise + e.totals.communityFeePaise)} hint={`Platform ${inr(e.totals.platformFeePaise)} · community ${inr(e.totals.communityFeePaise)}`} />
                 <Stat label="Month net earnings" value={inr(e.totals.driverNetPaise)} tone="good" />

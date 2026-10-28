@@ -2,7 +2,9 @@ import { Bell, LogOut, Menu, X } from 'lucide-react';
 import { Suspense, useState, type ComponentType, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/auth';
+import { LanguageSwitch } from '@/components/LanguageSwitch';
 import { cx, Spinner } from '@/components/ui';
+import { useT } from '@/i18n';
 import { api } from '@/services/api';
 import { useSocketConnected, useSocketEvent } from '@/services/socket';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,9 +19,9 @@ export interface NavItem {
 
 export function Logo({ to = '/' }: { to?: string }) {
   return (
-    <Link to={to} className="flex items-center gap-2 font-semibold text-stone-900">
-      <img src="/favicon.svg" alt="" className="size-7" />
-      <span>RideOn</span>
+    <Link to={to} className="flex items-center gap-2.5 text-ink" aria-label="RideOn home">
+      <img src="/favicon.svg" alt="" className="size-8" />
+      <span className="font-display text-xl font-extrabold tracking-tight">RideOn</span>
     </Link>
   );
 }
@@ -59,6 +61,7 @@ function LiveIndicator() {
 export function ConsoleLayout({ title, nav, header, notificationsTo }: { title: string; nav: NavItem[]; header?: ReactNode; notificationsTo?: string }) {
   const [open, setOpen] = useState(false);
   const { me, logout } = useAuth();
+  const { t } = useT();
   const navigate = useNavigate();
   const links = (
     <nav aria-label={`${title} navigation`} className="flex flex-col gap-0.5 p-3">
@@ -69,7 +72,7 @@ export function ConsoleLayout({ title, nav, header, notificationsTo }: { title: 
           end={item.end}
           onClick={() => setOpen(false)}
           className={({ isActive }) =>
-            cx('flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium', isActive ? 'bg-brand-50 text-brand-800' : 'text-stone-700 hover:bg-stone-100')
+            cx('flex items-center gap-3 rounded-full px-3.5 py-2 text-sm font-medium', isActive ? 'bg-brand-700 text-white' : 'text-ink/80 hover:bg-sand/70')
           }
         >
           <item.icon className="size-4 shrink-0" />
@@ -81,14 +84,15 @@ export function ConsoleLayout({ title, nav, header, notificationsTo }: { title: 
   );
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_1fr]">
-      <aside className="hidden border-r border-stone-200 bg-white lg:block">
+      <aside className="hidden border-r border-line bg-white lg:block">
         <div className="sticky top-0">
-          <div className="flex h-14 items-center border-b border-stone-200 px-4">
+          <div className="flex h-16 items-center border-b border-line px-5">
             <Logo to="/" />
           </div>
           <p className="px-6 pt-4 text-xs font-semibold uppercase tracking-wide text-stone-500">{title}</p>
           {header && <div className="px-3 pt-2">{header}</div>}
           {links}
+          <p className="font-display mx-6 mt-4 border-t border-line pt-4 text-sm font-extrabold leading-snug text-brand-700">{t('brand.tagline')}</p>
         </div>
       </aside>
       {open && (
@@ -108,13 +112,14 @@ export function ConsoleLayout({ title, nav, header, notificationsTo }: { title: 
         </div>
       )}
       <div className="min-w-0">
-        <header className="sticky top-0 z-[900] flex h-14 items-center gap-2 border-b border-stone-200 bg-white/95 px-4 backdrop-blur">
+        <header className="sticky top-0 z-[900] flex h-16 items-center gap-2 border-b border-line bg-paper/90 px-4 backdrop-blur">
           <button className="rounded-lg p-2 hover:bg-stone-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />
           </button>
           <span className="font-medium text-stone-700 lg:hidden">{title}</span>
           <div className="ml-auto flex items-center gap-2">
             <LiveIndicator />
+            <LanguageSwitch />
             {notificationsTo && <NotificationBell to={notificationsTo} />}
             <span className="hidden text-sm text-stone-600 sm:inline">{me?.name}</span>
             <button
@@ -130,7 +135,7 @@ export function ConsoleLayout({ title, nav, header, notificationsTo }: { title: 
             </button>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-4 py-6">
+        <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
           <Suspense fallback={<Spinner />}>
             <Outlet />
           </Suspense>

@@ -6,6 +6,7 @@ import { BaseMap, FitBounds, MapClick, Pin } from '@/components/map';
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, Input, MockLabel, PageHeader, QueryState, Select, Spinner, StatusBadge, Textarea } from '@/components/ui';
 import { useToast } from '@/components/ui/toast';
 import { useAction, useApi } from '@/hooks/api';
+import { useT } from '@/i18n';
 import { api } from '@/services/api';
 import { useLiveInterval, useSocketEvent } from '@/services/socket';
 import type { LatLng, PickupPoint } from '@/types';
@@ -59,7 +60,34 @@ function Countdown({ until }: { until: string }) {
 
 type LocationMode = 'device' | 'manual';
 
+/** The driver promise, made concrete: what you kept today and what was deducted. */
+function PromiseBanner() {
+  const { t } = useT();
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const q = useApi<{ days: { date: string; trips: number; farePaise: number; platformFeePaise: number; communityFeePaise: number; driverNetPaise: number }[] }>(['driver', 'earnings', 'today'], '/drivers/me/earnings', undefined, { refetchInterval: 60_000 });
+  const d = q.data?.days.find((x) => x.date === today);
+  return (
+    <section className="flex flex-wrap items-end justify-between gap-4 rounded-[1.75rem] bg-brand-700 p-6 text-paper sm:p-7">
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent-400">{t('brand.driverPromise')}</p>
+        {d ? (
+          <>
+            <p className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">{t('driver.heroKept', { net: inr(d.driverNetPaise) })}</p>
+            <p className="text-brand-200">{t('driver.heroTrips', { trips: d.trips, fares: inr(d.farePaise), fees: inr(d.platformFeePaise + d.communityFeePaise) })}</p>
+          </>
+        ) : (
+          <p className="max-w-[48ch] text-lg text-brand-100">{t('driver.heroEmpty')}</p>
+        )}
+      </div>
+      <Link to="/driver/earnings" className="rounded-full bg-accent-400 px-5 py-2.5 font-semibold text-ink hover:bg-accent-500">
+        {t('driver.heroLink')} →
+      </Link>
+    </section>
+  );
+}
+
 export default function DriverHomePage() {
+  const { t } = useT();
   const qc = useQueryClient();
   const toast = useToast();
   const me = useApi<DriverMe>(['driver', 'me'], '/drivers/me', undefined, { refetchInterval: 30_000 });
@@ -146,27 +174,29 @@ export default function DriverHomePage() {
   }
   const d = me.data!;
   const eligible = approved.find((e) => e.communityId === cid);
-  const awaitingCash = (recent.data ?? []).filter((t) => t.status === 'COMPLETED' && t.paymentMethod === 'CASH' && t.paymentStatus === 'PAYMENT_PENDING');
+  const awaitingCash = (recent.data ?? []).filter((r) => r.status === 'COMPLETED' && r.paymentMethod === 'CASH' && r.paymentStatus === 'PAYMENT_PENDING');
   const trip = active.data;
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Today"
-        subtitle={<span className="flex items-center gap-2">Status: <StatusBadge status={d.availability?.status ?? 'OFFLINE'} /> {d.availability?.stand && <Badge tone="blue">Queued at {d.availability.stand.name}</Badge>}</span>}
-        actions={online && d.availability?.status === 'ONLINE' && <Button variant="secondary" icon={<Power className="size-4" />} loading={goOffline.isPending} onClick={() => goOffline.mutate()}>Go offline</Button>}
+        title={t('driver.title')}
+        subtitle={<span className="flex items-center gap-2">{t('driver.status')}: <StatusBadge status={d.availability?.status ?? 'OFFLINE'} /> {d.availability?.stand && <Badge tone="blue">Queued at {d.availability.stand.name}</Badge>}</span>}
+        actions={online && d.availability?.status === 'ONLINE' && <Button variant="secondary" icon={<Power className="size-4" />} loading={goOffline.isPending} onClick={() => goOffline.mutate()}>{t('driver.goOffline')}</Button>}
       />
+
+      <PromiseBanner />
 
       {d.verificationStatus !== 'VERIFIED' && <Alert tone="warn">Your verification is {d.verificationStatus.toLowerCase().replace('_', ' ')}. <Link className="underline" to="/driver/profile">Check your documents</Link>.</Alert>}
 
       {trip && (
-        <Card title={<span className="flex items-center gap-2">Current trip {trip.reference} <StatusBadge status={trip.status} /></span>}>
+        <Card title={<span className="flex items-center gap-2">{t('driver.currentTrip')} {trip.reference} <StatusBadge status={trip.status} /></span>}>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3 text-sm">
               <p><span className="text-stone-500">Passenger:</span> {trip.passenger.firstName}</p>
               <p><span className="text-stone-500">Pickup:</span> {trip.pickupAddress ?? 'Pinned location'}</p>
               <p><span className="text-stone-500">Drop:</span> {trip.dropAddress ?? 'Pinned location'}</p>
-              <p><span className="text-stone-500">Fare:</span> <strong>{inr(trip.quotedFarePaise)}</strong> ({trip.paymentMethod === 'CASH' ? 'collect cash' : 'paid online'}) — community-approved, not editable.</p>
+              <p><span className="text-stone-500">Fare:</span> <strong>{inr(trip.quotedFarePaise)}</strong> ({trip.paymentMethod === 'CASH' ? 'collect cash' : 'paid online'}) — {t('driver.fareFixed')}</p>
               <a
                 href={directionsUrl(position, trip.status === 'IN_PROGRESS' ? { lat: trip.dropLat, lng: trip.dropLng } : { lat: trip.pickupLat, lng: trip.pickupLng })}
                 target="_blank"
@@ -176,15 +206,15 @@ export default function DriverHomePage() {
                 <Navigation className="size-4" /> Navigate to {trip.status === 'IN_PROGRESS' ? 'drop' : 'pickup'}
               </a>
               <div className="flex flex-wrap gap-2 pt-2">
-                {trip.status === 'ACCEPTED' && <Button loading={arrived.isPending} onClick={() => arrived.mutate(trip.id)}>I have arrived</Button>}
+                {trip.status === 'ACCEPTED' && <Button loading={arrived.isPending} onClick={() => arrived.mutate(trip.id)}>{t('driver.arrived')}</Button>}
                 {trip.status === 'ARRIVING' && (
                   <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); start.mutate(trip.id); }}>
-                    <Input label="Passenger's start PIN" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} className="w-40" />
-                    <Button type="submit" disabled={pin.length !== 4} loading={start.isPending}>Start trip</Button>
+                    <Input label={t('driver.pinLabel')} inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} className="w-40" />
+                    <Button type="submit" disabled={pin.length !== 4} loading={start.isPending}>{t('driver.startTrip')}</Button>
                   </form>
                 )}
-                {trip.status === 'IN_PROGRESS' && <Button icon={<CheckCircle2 className="size-4" />} loading={complete.isPending} onClick={() => complete.mutate(trip.id)}>Complete trip</Button>}
-                {trip.status === 'ARRIVING' && <Button variant="secondary" loading={noShow.isPending} onClick={() => noShow.mutate(trip.id)}>Passenger no-show</Button>}
+                {trip.status === 'IN_PROGRESS' && <Button icon={<CheckCircle2 className="size-4" />} loading={complete.isPending} onClick={() => complete.mutate(trip.id)}>{t('driver.completeTrip')}</Button>}
+                {trip.status === 'ARRIVING' && <Button variant="secondary" loading={noShow.isPending} onClick={() => noShow.mutate(trip.id)}>{t('driver.noShow')}</Button>}
                 {trip.status !== 'IN_PROGRESS' && <Button variant="ghost" icon={<XCircle className="size-4" />} onClick={() => setCancelOpen(true)}>Cancel</Button>}
                 <Button variant="danger" icon={<AlertOctagon className="size-4" />} loading={sos.isPending} onClick={() => sos.mutate(trip.id)}>SOS</Button>
               </div>
@@ -203,12 +233,12 @@ export default function DriverHomePage() {
       )}
 
       {awaitingCash.length > 0 && (
-        <Card title="Confirm cash received">
+        <Card title={t('driver.confirmCash')}>
           <ul className="divide-y divide-stone-100">
-            {awaitingCash.map((t) => (
-              <li key={t.id} className="flex items-center justify-between py-2 text-sm">
-                <span>{t.reference} · {inr(t.finalFarePaise)}</span>
-                <Button size="sm" loading={cash.isPending} onClick={() => cash.mutate(t.id)}>Cash received</Button>
+            {awaitingCash.map((row) => (
+              <li key={row.id} className="flex items-center justify-between py-2 text-sm">
+                <span>{row.reference} · {inr(row.finalFarePaise)}</span>
+                <Button size="sm" loading={cash.isPending} onClick={() => cash.mutate(row.id)}>{t('driver.cashReceived')}</Button>
               </li>
             ))}
           </ul>
@@ -216,7 +246,7 @@ export default function DriverHomePage() {
       )}
 
       {!online && (
-        <Card title="Go online">
+        <Card title={t('driver.goOnline')}>
           {approved.length === 0 ? (
             <EmptyState title="No approved community yet" action={<Link to="/driver/profile" className="font-medium text-brand-700 hover:underline">Apply to a community →</Link>} />
           ) : (
@@ -238,7 +268,7 @@ export default function DriverHomePage() {
                 </fieldset>
                 <p className="text-xs text-stone-500">Your location is shared only while you are online and deleted when you go offline.</p>
                 <Button size="lg" className="w-full" icon={<Power className="size-4" />} disabled={!eligible?.eligible || (mode === 'manual' && !position)} loading={goOnline.isPending} onClick={() => goOnline.mutate()}>
-                  Go online
+                  {t('driver.goOnline')}
                 </Button>
               </div>
               {mode === 'manual' && (
@@ -257,8 +287,8 @@ export default function DriverHomePage() {
       )}
 
       {online && !trip && (
-        <Card title="Trip requests">
-          <QueryState query={offers} empty={(o) => o.length === 0 && <EmptyState title="Waiting for requests">Requests from nearby passengers appear here. Keep this page open.</EmptyState>}>
+        <Card title={t('driver.requests')}>
+          <QueryState query={offers} empty={(o) => o.length === 0 && <EmptyState title={t('driver.waiting')}>{t('driver.waitingBody')}</EmptyState>}>
             {(list) => (
               <ul className="space-y-3">
                 {list.map((o) => (
@@ -270,8 +300,8 @@ export default function DriverHomePage() {
                     <p className="text-sm">Pickup {o.distanceMeters !== null ? `${km(o.distanceMeters)} away` : ''}: {o.booking.pickupAddress ?? 'pinned location'}</p>
                     <p className="text-sm">Drop: {o.booking.dropAddress ?? 'pinned location'} · trip {km(o.booking.distanceMeters)} · {o.booking.paymentMethod === 'CASH' ? 'cash' : 'online'}</p>
                     <div className="mt-3 flex gap-2">
-                      <Button loading={accept.isPending} onClick={() => accept.mutate(o.booking.id)}>Accept</Button>
-                      <Button variant="secondary" loading={reject.isPending} onClick={() => reject.mutate(o.booking.id)}>Decline</Button>
+                      <Button loading={accept.isPending} onClick={() => accept.mutate(o.booking.id)}>{t('driver.accept')}</Button>
+                      <Button variant="secondary" loading={reject.isPending} onClick={() => reject.mutate(o.booking.id)}>{t('driver.decline')}</Button>
                     </div>
                   </li>
                 ))}

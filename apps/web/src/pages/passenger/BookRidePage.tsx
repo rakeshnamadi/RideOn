@@ -118,7 +118,10 @@ export default function BookRidePage() {
   return (
     <div className="grid gap-5 lg:grid-cols-[22rem_1fr]">
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold">{t('book.title')}</h1>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-accent-700">{t('brand.passengerPromise')}</p>
+          <h1 className="font-display mt-1 text-3xl font-extrabold tracking-tight">{t('book.title')}</h1>
+        </div>
         {activeBooking && (
           <Alert tone="info">
             You have an active booking {activeBooking.reference} <StatusBadge status={activeBooking.status} />.{' '}
@@ -154,6 +157,7 @@ export default function BookRidePage() {
             <Button className="w-full" size="lg" disabled={!pickup || !drop} loading={getQuote.isPending} onClick={() => getQuote.mutate()}>
               {t('book.getFare')}
             </Button>
+            <p className="text-center text-xs text-muted">{t('book.fareNote')}</p>
           </div>
         </Card>
 

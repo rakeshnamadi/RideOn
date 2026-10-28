@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { homeFor, useAuth } from '@/app/auth';
 import { Alert, Button, Card, errorMessage, Input } from '@/components/ui';
 import { useState } from 'react';
+import { AuthShell } from '@/features/brand/AuthShell';
 
 const Schema = z.object({
   identifier: z.string().trim().min(3, 'Enter your mobile number or email'),
@@ -31,9 +32,9 @@ export default function LoginPage() {
   });
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10">
+    <AuthShell>
       <Card>
-        <h1 className="text-xl font-semibold">Sign in</h1>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight">Sign in</h1>
         <p className="mt-1 text-sm text-stone-600">Passengers, drivers and community administrators all sign in here.</p>
         <form onSubmit={onSubmit} className="mt-5 space-y-4" noValidate>
           {error && <Alert tone="error">{error}</Alert>}
@@ -57,6 +58,6 @@ export default function LoginPage() {
           <strong>Development seed accounts</strong> (password <code>Demo@12345</code>): super admin 9000000001 · community head 9000000002 · community admin 9000000003 · approver 9000000004 · other community head 9000000005 · drivers 9000000010–14 · passengers 9000000020, 9000000021.
         </div>
       )}
-    </div>
+    </AuthShell>
   );
 }
