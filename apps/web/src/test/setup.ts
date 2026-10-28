@@ -21,6 +21,10 @@ globalThis.Request = class extends NodeRequest {
   }
 } as typeof Request;
 
+// jsdom does not implement scrolling; the public layout scrolls to anchors.
+window.scrollTo = () => undefined;
+Element.prototype.scrollIntoView = () => undefined;
+
 // jsdom lacks <dialog> methods used by the Modal component.
 if (typeof HTMLDialogElement !== 'undefined') {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {

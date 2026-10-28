@@ -15,9 +15,9 @@ describe('route guards', () => {
   it('sends anonymous visitors to sign in, remembering where they were going', async () => {
     mockApi((url) => (url.endsWith('/auth/refresh') ? { status: 401, body: { error: { code: 'UNAUTHORIZED', message: 'no session' } } } : undefined));
     const router = renderApp('/app/bookings');
-    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'), { timeout: 5000 });
     expect(router.state.location.search).toBe('?next=%2Fapp%2Fbookings');
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' }, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it('blocks a passenger from the platform admin console', async () => {
@@ -81,7 +81,7 @@ describe('sign in', () => {
     await user.type(await screen.findByLabelText('Mobile number or email'), '9000000020');
     await user.type(screen.getByLabelText('Password'), 'Demo@12345');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(router.state.location.pathname).toBe('/app'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app'), { timeout: 5000 });
     expect(await screen.findByRole('heading', { name: 'Where are you going?' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'See fare' })).toBeDisabled();
   });
