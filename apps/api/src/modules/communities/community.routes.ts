@@ -10,6 +10,7 @@ import { audit } from '../audit/audit.service.js';
 import { communityPermissionsFor } from '../auth/auth-context.js';
 import { notify } from '../notifications/notification.service.js';
 import { activeFareRules } from '../fares/fare.service.js';
+import { backfillRoutePaths } from './route-path.js';
 import { createPolicyProposal, GOVERNED_POLICY_FIELDS, OPERATIONAL_POLICY_FIELDS } from '../fares/governance.service.js';
 import { PhoneSchema } from '../auth/auth.routes.js';
 
@@ -68,6 +69,8 @@ communityRoutes.get('/:communityId/public', async (req, res) => {
           bookingCutoffMinutes: true,
           cancellationCutoffMinutes: true,
           boardingRules: true,
+          pathGeometry: true,
+          pathDistanceMeters: true,
           stops: {
             orderBy: { sequence: 'asc' },
             select: { id: true, sequence: true, offsetMinutes: true, pickupPoint: { select: { id: true, name: true, lat: true, lng: true } } },
@@ -84,6 +87,7 @@ communityRoutes.get('/:communityId/public', async (req, res) => {
     },
   });
   if (!community) throw notFound('Community');
+  backfillRoutePaths(community.sharedRoutes);
   ok(res, { ...community, fares: await activeFareRules(id) });
 });
 

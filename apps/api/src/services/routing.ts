@@ -25,6 +25,37 @@ export function estimateRoute(from: LatLng, to: LatLng): RouteResult {
 }
 
 /**
+ * Road path through several waypoints in order (e.g. a shared route's stops).
+ * Returns null — never an estimate — when routing is disabled or fails, so callers
+ * can fall back to drawing straight segments and label them as such.
+ */
+export async function getPathThrough(points: LatLng[]): Promise<{ geometry: [number, number][]; distanceMeters: number } | null> {
+  if (env.ROUTING_PROVIDER === 'none' || points.length < 2 || points.length > 50) return null;
+  try {
+    const coords = points.map((p) => `${p.lng},${p.lat}`).join(';');
+    const res = await fetch(`${env.ROUTING_URL}/route/v1/driving/${coords}?overview=full&geometries=geojson`, {
+      signal: AbortSignal.timeout(env.PROVIDER_TIMEOUT_MS * 2),
+      headers: { 'User-Agent': env.GEOCODING_USER_AGENT },
+    });
+    if (!res.ok) throw new Error(`Routing provider HTTP ${res.status}`);
+    const body = (await res.json()) as { code: string; routes?: { distance: number; geometry: { coordinates: [number, number][] } }[] };
+    const route = body.routes?.[0];
+    if (body.code !== 'Ok' || !route) throw new Error(`Routing provider returned ${body.code}`);
+    // Round to ~1 m and drop consecutive duplicates to keep the stored path small.
+    const geometry: [number, number][] = [];
+    for (const [lng, lat] of route.geometry.coordinates) {
+      const p: [number, number] = [Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5];
+      const last = geometry[geometry.length - 1];
+      if (!last || last[0] !== p[0] || last[1] !== p[1]) geometry.push(p);
+    }
+    return { geometry, distanceMeters: Math.round(route.distance) };
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, 'Could not compute road path through stops');
+    return null;
+  }
+}
+
+/**
  * Road route between two points using the configured routing provider.
  * Falls back to a clearly labelled straight-line estimate on timeout or error.
  * Note: the public OSRM demo server is for development only (see docs/deployment.md).

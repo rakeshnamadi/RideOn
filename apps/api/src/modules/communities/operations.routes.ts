@@ -8,6 +8,7 @@ import { conflict, notFound, unprocessable } from '../../utils/errors.js';
 import { created, ok, pageMeta, pagination, parse, param } from '../../utils/http.js';
 import { audit } from '../audit/audit.service.js';
 import { findActiveRule } from '../fares/fare.service.js';
+import { backfillRoutePaths, refreshRoutePath } from './route-path.js';
 import { Lat, Lng } from '../geo/geo.routes.js';
 import { notify } from '../notifications/notification.service.js';
 
@@ -249,17 +250,16 @@ async function maxApprovedCapacity(cid: string) {
 }
 
 communityOpsRoutes.get('/routes', requireCommunity('community.view'), async (req, res) => {
-  ok(
-    res,
-    await prisma.sharedRoute.findMany({
+  const routes = await prisma.sharedRoute.findMany({
       where: { communityId: communityId(req) },
       include: {
         stops: { orderBy: { sequence: 'asc' }, include: { pickupPoint: { select: { id: true, name: true, lat: true, lng: true } } } },
         schedules: { orderBy: { departureTime: 'asc' } },
       },
       orderBy: { code: 'asc' },
-    }),
-  );
+    });
+  backfillRoutePaths(routes);
+  ok(res, routes);
 });
 
 communityOpsRoutes.post('/routes', requireCommunity('community.routes.manage'), async (req, res) => {
@@ -274,6 +274,7 @@ communityOpsRoutes.post('/routes', requireCommunity('community.routes.manage'), 
     include: { stops: { orderBy: { sequence: 'asc' } } },
   });
   await audit({ action: 'route.created', entityType: 'SharedRoute', entityId: createdRoute.id, communityId: cid, after: body }, { ctx: req.auth, req });
+  void refreshRoutePath(createdRoute.id); // road path is drawn once the routing provider answers
   created(res, createdRoute);
 });
 
@@ -298,6 +299,7 @@ communityOpsRoutes.patch('/routes/:routeId', requireCommunity('community.routes.
     return tx.sharedRoute.update({ where: { id: existing.id }, data, include: { stops: { orderBy: { sequence: 'asc' } }, schedules: true } });
   });
   await audit({ action: 'route.updated', entityType: 'SharedRoute', entityId: existing.id, communityId: cid, before: { status: existing.status, maxSeats: existing.maxSeats }, after: body }, { ctx: req.auth, req });
+  if (stops) void refreshRoutePath(existing.id);
   ok(res, updated);
 });
 

@@ -89,5 +89,5 @@ export interface Departure {
   seatsAvailable: number;
   bookingClosesAt: string;
   vehicle: { registrationNumber: string } | null;
-  route: { id: string; code: string; name: string; cancellationCutoffMinutes: number; boardingRules: string | null; stops: RouteStop[] };
+  route: { id: string; code: string; name: string; cancellationCutoffMinutes: number; boardingRules: string | null; pathGeometry: [number, number][] | null; stops: RouteStop[] };
 }

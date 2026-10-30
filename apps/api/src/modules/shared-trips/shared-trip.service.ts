@@ -89,7 +89,7 @@ export async function searchDepartures(q: { communityId?: string; routeId?: stri
       seatsAvailable: t.capacity - t.seatsBooked,
       bookingClosesAt: addMinutes(t.departureAt, -t.route.bookingCutoffMinutes),
       vehicle: t.vehicle,
-      route: { id: t.route.id, code: t.route.code, name: t.route.name, cancellationCutoffMinutes: t.route.cancellationCutoffMinutes, boardingRules: t.route.boardingRules, stops: t.route.stops },
+      route: { id: t.route.id, code: t.route.code, name: t.route.name, cancellationCutoffMinutes: t.route.cancellationCutoffMinutes, boardingRules: t.route.boardingRules, pathGeometry: t.route.pathGeometry, stops: t.route.stops },
     }));
 }
 

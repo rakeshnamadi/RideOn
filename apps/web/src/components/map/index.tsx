@@ -112,6 +112,15 @@ export function RouteLine({ points, color = '#047857', dashed }: { points: [numb
   return <Polyline positions={points} pathOptions={{ color, weight: 5, opacity: 0.8, dashArray: dashed ? '6 8' : undefined }} />;
 }
 
+/** A shared route: the stored road path when available, else dashed straight segments between stops. */
+export function SharedRoutePath({ path, stops }: { path: [number, number][] | null | undefined; stops: LatLng[] }) {
+  return path && path.length > 1 ? (
+    <RouteLine points={path} color="#0f4d3a" />
+  ) : (
+    <RouteLine points={stops.map((s) => [s.lat, s.lng])} color="#0f4d3a" dashed />
+  );
+}
+
 export function AreaPolygon({ polygon, name, color = '#047857' }: { polygon: [number, number][]; name?: string; color?: string }) {
   return (
     <Polygon positions={polygon} pathOptions={{ color, weight: 2, fillOpacity: 0.08 }}>

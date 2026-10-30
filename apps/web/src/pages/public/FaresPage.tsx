@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AreaPolygon, BaseMap, FitBounds, Pin, RouteLine } from '@/components/map';
+import { AreaPolygon, BaseMap, FitBounds, Pin, SharedRoutePath } from '@/components/map';
 import { Card, DataTable, PageHeader, QueryState, Badge } from '@/components/ui';
 import { useApi } from '@/hooks/api';
 import type { FareRule, PickupPoint, RouteStop } from '@/types';
@@ -26,7 +26,7 @@ interface PublicCommunity {
   policy: { cancellationFreeWindowSec: number; cancellationFeePaise: number } | null;
   serviceAreas: { id: string; name: string; polygon: [number, number][] }[];
   pickupPoints: PickupPoint[];
-  sharedRoutes: { id: string; code: string; name: string; description: string | null; boardingRules: string | null; stops: RouteStop[]; schedules: { id: string; departureTime: string; daysOfWeek: number; seatCapacity: number }[] }[];
+  sharedRoutes: { id: string; code: string; name: string; description: string | null; boardingRules: string | null; pathGeometry: [number, number][] | null; stops: RouteStop[]; schedules: { id: string; departureTime: string; daysOfWeek: number; seatCapacity: number }[] }[];
   announcements: { id: string; title: string; body: string; createdAt: string }[];
   fares: { regular: FareRule | null; shared: { route: { id: string; code: string; name: string }; rule: FareRule }[]; upcoming: FareRule[] };
 }
@@ -113,7 +113,7 @@ export default function FaresPage() {
                             {r.boardingRules && <p className="text-stone-600">{r.boardingRules}</p>}
                           </div>
                           <BaseMap className="h-56" label={`Route ${r.code}`}>
-                            <RouteLine points={r.stops.map((s) => [s.pickupPoint.lat, s.pickupPoint.lng])} color="#0369a1" dashed />
+                            <SharedRoutePath path={r.pathGeometry} stops={r.stops.map((s) => s.pickupPoint)} />
                             {r.stops.map((s) => (
                               <Pin key={s.id} position={s.pickupPoint} kind="stop" text={String(s.sequence)} label={s.pickupPoint.name} />
                             ))}

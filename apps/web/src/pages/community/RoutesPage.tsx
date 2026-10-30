@@ -3,13 +3,13 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { BaseMap, FitBounds, Pin, RouteLine } from '@/components/map';
+import { BaseMap, FitBounds, Pin, SharedRoutePath } from '@/components/map';
 import { Alert, Badge, Button, Card, DataTable, Input, Modal, PageHeader, QueryState, Select, StatusBadge, Textarea } from '@/components/ui';
 import { useAction, useApi } from '@/hooks/api';
 import { useCommunity } from '@/layouts/CommunityLayout';
 import { api } from '@/services/api';
 import type { PickupPoint, RouteStop } from '@/types';
-import { daysLabel, WEEKDAYS } from '@/utils/format';
+import { daysLabel, km, WEEKDAYS } from '@/utils/format';
 
 interface Route {
   id: string;
@@ -21,6 +21,8 @@ interface Route {
   bookingCutoffMinutes: number;
   cancellationCutoffMinutes: number;
   boardingRules: string | null;
+  pathGeometry: [number, number][] | null;
+  pathDistanceMeters: number | null;
   stops: RouteStop[];
   schedules: { id: string; departureTime: string; daysOfWeek: number; seatCapacity: number; active: boolean; validFrom: string }[];
 }
@@ -144,7 +146,7 @@ export default function RoutesPage() {
               >
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-3">
-                    <p className="text-sm text-stone-600">{r.maxSeats} seats max · booking closes {r.bookingCutoffMinutes} min before · free cancel until {r.cancellationCutoffMinutes} min before</p>
+                    <p className="text-sm text-stone-600">{r.pathDistanceMeters ? `${km(r.pathDistanceMeters)} by road · ` : 'Road path pending · '}{r.maxSeats} seats max · booking closes {r.bookingCutoffMinutes} min before · free cancel until {r.cancellationCutoffMinutes} min before</p>
                     <ol className="space-y-1 text-sm">{r.stops.map((s) => <li key={s.id}>{s.sequence}. {s.pickupPoint.name} <span className="text-stone-500">+{s.offsetMinutes} min</span></li>)}</ol>
                     <DataTable
                       rows={r.schedules}
@@ -160,7 +162,7 @@ export default function RoutesPage() {
                     />
                   </div>
                   <BaseMap className="h-56" label={`Route ${r.code}`}>
-                    <RouteLine points={r.stops.map((s) => [s.pickupPoint.lat, s.pickupPoint.lng])} color="#0369a1" dashed />
+                    <SharedRoutePath path={r.pathGeometry} stops={r.stops.map((s) => s.pickupPoint)} />
                     {r.stops.map((s) => <Pin key={s.id} position={s.pickupPoint} kind="stop" text={String(s.sequence)} label={s.pickupPoint.name} />)}
                     <FitBounds points={r.stops.map((s) => s.pickupPoint)} />
                   </BaseMap>

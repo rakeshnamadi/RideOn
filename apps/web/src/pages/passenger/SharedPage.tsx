@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BaseMap, FitBounds, Pin, RouteLine } from '@/components/map';
+import { BaseMap, FitBounds, Pin, SharedRoutePath } from '@/components/map';
 import { Alert, Badge, Button, Card, cx, EmptyState, MockLabel, PageHeader, QueryState, Select } from '@/components/ui';
 import { useAction, useApi } from '@/hooks/api';
 import { useT } from '@/i18n';
@@ -87,7 +87,7 @@ export default function SharedPage() {
               </Card>
               {route && (
                 <BaseMap className="h-64" label={`Route ${route.code}`}>
-                  <RouteLine points={route.stops.map((s) => [s.pickupPoint.lat, s.pickupPoint.lng])} color="#0369a1" dashed />
+                  <SharedRoutePath path={route.pathGeometry} stops={route.stops.map((s) => s.pickupPoint)} />
                   {route.stops.map((s) => (
                     <Pin key={s.id} position={s.pickupPoint} kind={s.id === from?.id ? 'pickup' : s.id === to?.id ? 'drop' : 'stop'} text={s.id === from?.id ? 'A' : s.id === to?.id ? 'B' : String(s.sequence)} label={s.pickupPoint.name} />
                   ))}
