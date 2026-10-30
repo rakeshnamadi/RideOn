@@ -29,7 +29,7 @@ All eight phases are implemented. The API, database and web app run locally, and
 | Notifications (in-app + Socket.IO) with polling fallback | Done |
 | Four consoles (passenger, driver, community, platform) + public pages | Done |
 | Reports, CSV export, audit log (append-only) | Done |
-| Automated tests | Done — 97 tests passing |
+| Automated tests | Done — 97 unit/integration tests + 12 browser journeys passing |
 | ESLint (typescript-eslint, React Hooks rules) | Done — 0 problems |
 | Docs, `.env.example`, Docker Compose | Done — Compose not run (no Docker available) |
 
@@ -109,6 +109,18 @@ Command: `npm test` from the repository root (2026-10-30). `npm run typecheck` a
 | `src/test/api-client.test.ts` | 5 | Bearer + CSRF headers, refresh-and-retry on 401, session-lost callback, field errors, network errors |
 | `src/test/journeys.test.tsx` | 8 | Anonymous redirect with `next`, passenger blocked from admin, community admin blocked from other community, login validation, wrong credentials, successful login → booking screen, registration validation, error state with request reference and retry |
 
+**Browser E2E — 12 passed / 12** (Playwright 1.64 driving the installed Google Chrome 156, headless; isolated `rideon_e2e` database reseeded per run, API :4100, web :5174). Run twice in a row, green both times (1.7 min and 1.5 min).
+
+| Spec | Journey |
+|---|---|
+| `e2e/specs/01-public.spec.ts` | Landing shows "Your city. Your people. Your ride.", both promises, a live example fare and real fee breakdown; "For drivers" anchor scrolls; published fares and the KM-1 route map without an account; Hindi switch; protected page → sign-in (wrong password shown) → back to the original page |
+| `e2e/specs/02-regular-ride.spec.ts` | **Workflows 1–2 in two browser sessions:** driver goes online with a manual map location; a new passenger registers, picks pickup and drop on the map, gets a server quote and books; driver accepts the live offer; passenger sees driver and vehicle; driver arrives, a wrong PIN is refused, the passenger’s PIN starts the trip; complete; cash recorded; passenger sees Completed + Paid and rates 5 stars; driver goes offline |
+| `e2e/specs/03-shared-auto.spec.ts` | **Workflow 3:** passenger picks a departure, holds a seat, confirms; seat number and boarding PIN shown |
+| `e2e/specs/04-governance.spec.ts` | **Workflows 5–7:** community admin creates a route with ordered stops; admin proposes a cancellation-fee rule change (₹20 → ₹25) and cannot approve it; approver approves; the new rule shows in settings |
+| `e2e/specs/05-roles.spec.ts` | **Workflows 8–10:** another community’s head and a passenger are refused community/admin/driver consoles; super admin inspects overview, communities, all bookings and the audit log |
+
+Workflow 4 (concurrent seat reservations cannot overbook) is a race a single browser can’t trigger reliably; it stays covered by the API integration test that fires 10 simultaneous reservations at a 3-seat departure.
+
 ### Manual browser verification (running stack, built-in browser)
 
 - Landing and public fares pages render, with OSM tiles, attribution, service areas, stands and route maps.
@@ -124,7 +136,6 @@ Command: `npm test` from the repository root (2026-10-30). `npm run typecheck` a
 | **Real payment provider** | No provider credentials; the brief says not to fake confirmations. Cash and a clearly labelled mock hosted checkout work end to end with signed webhooks. | Implement `PaymentProvider` for the chosen gateway (create order/checkout, verify webhook signature, refunds), set `PAYMENT_PROVIDER`. |
 | **SMS/email delivery** | No provider configured. Password-reset tokens are returned in the API response in development only; notifications are in-app + Socket.IO. | Add an SMS/email adapter for resets, booking alerts and trusted-contact sharing. |
 | **Docker Compose untested** | Docker isn't installed on this machine. | Run `docker compose up --build` and fix any issues. |
-| **No browser-automation E2E suite** | The 10 required workflows are covered by API-level end-to-end tests against real MySQL, plus the manual browser run above. Playwright would need ~150 MB of browser downloads. | Add Playwright specs for the same journeys if UI regression coverage is wanted. |
 | Cancellation fees on cash bookings | Recorded on the booking (and deducted from refunds of prepaid bookings) but not collected. | Decide a collection policy (e.g. add to next fare) with communities. |
 | Shared route paths with routing disabled | Paths come from the routing provider; with `ROUTING_PROVIDER=none` (as in tests) routes fall back to dashed straight segments. | Use a hosted or self-hosted OSRM in production. |
 | Turn-by-turn navigation | Drivers get an OpenStreetMap directions link. | Deep-link to a navigation app, or embed routing. |
@@ -139,4 +150,4 @@ Command: `npm test` from the repository root (2026-10-30). `npm run typecheck` a
 2. Run the Compose stack, then deploy a staging environment with hosted map providers.
 3. Replace the demo seed with a production bootstrap script for the first super admin and the pilot community.
 4. Pilot review with a real community: fare caps per the state's notified fares, policy defaults, consent texts.
-5. Add Playwright UI tests, and wire `npm run lint` and `npm test` into CI.
+5. Wire `npm run lint`, `npm test` and `npm run test:e2e` into CI (CI needs MySQL and Chrome, or `npx playwright install chromium`).

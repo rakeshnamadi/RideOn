@@ -8,3 +8,5 @@ apps/api/uploads/
 coverage/
 *.log
 .DS_Store
+e2e/report/
+e2e/test-results/

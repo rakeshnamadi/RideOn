@@ -182,7 +182,7 @@ export default function CommunityFaresPage() {
   const [comments, setComments] = useState<Record<string, string>>({});
   const vote = useAction(({ pid, decision }: { pid: string; decision: string }) => api.post<{ status: string }>(`/fares/proposals/${pid}/votes`, { decision, comment: comments[pid] || undefined }), {
     invalidate: [['community', id]],
-    success: (r) => (r.status === 'APPLIED' ? 'Approved — the new fare is published' : r.status === 'REJECTED' ? 'Proposal rejected' : 'Vote recorded'),
+    success: (r) => (r.status === 'APPLIED' ? 'Approved — the change is now in effect' : r.status === 'REJECTED' ? 'Proposal rejected' : 'Vote recorded'),
   });
   const withdraw = useAction((pid: string) => api.post(`/fares/proposals/${pid}/withdraw`), { invalidate: [['community', id]], success: 'Proposal withdrawn' });
 

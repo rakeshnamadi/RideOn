@@ -34,6 +34,7 @@ The landing page’s example trip and earnings breakdown use live data — a rea
 ```
 apps/api     Express API, Prisma schema/migrations/seed, jobs, sockets, tests
 apps/web     React app (four consoles + public pages), tests
+e2e/         Playwright browser journeys (isolated database, API and web server)
 docs/        architecture, database, API, security, deployment
 scripts/     local MySQL start/stop helpers
 ```
@@ -113,7 +114,15 @@ Drivers need a location to receive offers. In the driver console choose **Set on
 npm test
 ```
 
-This runs the API suite (unit + integration against the `TEST_DATABASE_URL` MySQL database, which is migrated automatically and truncated per test file) and the web suite. See `BUILD_STATUS.md` for the latest recorded results.
+This runs the API suite (unit + integration against the `TEST_DATABASE_URL` MySQL database, which is migrated automatically and truncated per test file) and the web suite.
+
+Browser end-to-end tests (Playwright, driving your installed Google Chrome — no browser download):
+
+```bash
+npm run test:e2e
+```
+
+They start their own isolated stack — a `rideon_e2e` database (created, migrated and reseeded on every run), an API on port 4100 and the web app on port 5174 — so they never touch development data and can run while `dev:api`/`dev:web` are up. MySQL must be running. On failure, traces and screenshots are kept in `e2e/test-results/`; open the HTML report with `npx playwright show-report e2e/report`. See `BUILD_STATUS.md` for the latest recorded results.
 
 ## Useful scripts
 
@@ -122,7 +131,8 @@ This runs the API suite (unit + integration against the `TEST_DATABASE_URL` MySQ
 | `npm run dev:api` / `npm run dev:web` | Run API / web in watch mode |
 | `npm run build` | Production build of both apps |
 | `npm run typecheck` | Type-check both apps |
-| `npm run lint` | ESLint (TypeScript + React Hooks rules) over both apps |
+| `npm run lint` | ESLint (TypeScript + React Hooks rules) over both apps and the E2E suite |
+| `npm run test:e2e` | Playwright browser journeys against an isolated stack |
 | `npm run db:migrate` | Apply migrations (`prisma migrate deploy`) |
 | `npm run db:seed` | Load development demo data |
 | `npm run db:reset` | Drop and recreate the dev database (destructive; Prisma asks for confirmation) |

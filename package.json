@@ -13,6 +13,7 @@
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "lint": "eslint .",
+    "test:e2e": "playwright test",
     "test": "npm run test -w apps/api && npm run test -w apps/web",
     "db:migrate": "npm run db:migrate -w apps/api",
     "db:seed": "npm run db:seed -w apps/api",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^16.5.0",
