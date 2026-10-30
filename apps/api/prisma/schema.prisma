@@ -344,6 +344,10 @@ model GovernanceProposal {
   platformReviewerId     String?
   platformReviewNote     String?        @db.VarChar(1000)
   effectiveFrom          DateTime
+  /// POLICY_CHANGE only: the proposed policy field values, e.g. {"cancellationFeePaise": 2500}.
+  policyChanges          Json?
+  /// POLICY_CHANGE only: the policy values at proposal time, shown alongside the proposal.
+  policyBefore           Json?
   decidedAt              DateTime?
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
@@ -586,6 +590,10 @@ model SharedRoute {
   bookingCutoffMinutes   Int         @default(5)
   cancellationCutoffMinutes Int      @default(15)
   boardingRules          String?     @db.VarChar(1000)
+  /// Road path through the stops as [lat, lng] pairs, from the routing provider (null if unavailable).
+  pathGeometry           Json?
+  /// Road distance through all stops, when the routing provider supplied it.
+  pathDistanceMeters     Int?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
   community              Community   @relation(fields: [communityId], references: [id], onDelete: Cascade)

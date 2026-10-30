@@ -11,9 +11,13 @@ import { api } from '@/services/api';
 import type { FareRule } from '@/types';
 import { dateTime, humanize, inr, rupeesToPaise } from '@/utils/format';
 import { FareRuleSummary } from '@/features/fares/FareRuleSummary';
+import { PolicyChangeSummary } from '@/features/governance/PolicyChangeSummary';
 
 interface Proposal {
   id: string;
+  type: 'FARE_CHANGE' | 'POLICY_CHANGE';
+  policyChanges: Record<string, unknown> | null;
+  policyBefore: Record<string, unknown> | null;
   title: string;
   rationale: string | null;
   status: string;
@@ -184,7 +188,7 @@ export default function CommunityFaresPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Fares & governance" subtitle="Fares change only through proposals approved under this community's policy." actions={can('fares.propose') && <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)} disabled={!fares.data || !policy.data}>Propose a change</Button>} />
+      <PageHeader title="Fares & governance" subtitle="Fares and community rules change only through proposals your approvers vote on." actions={can('fares.propose') && <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)} disabled={!fares.data || !policy.data}>Propose a change</Button>} />
       <QueryState query={fares}>
         {(f) => (
           <div className="grid gap-5 lg:grid-cols-2">
@@ -216,10 +220,10 @@ export default function CommunityFaresPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">{p.title}</p>
                       <StatusBadge status={p.status} />
-                      <Badge>{p.fareProposal?.serviceType === 'SHARED' ? 'Shared' : 'Regular'}</Badge>
+                      <Badge tone={p.type === 'POLICY_CHANGE' ? 'blue' : 'gray'}>{p.type === 'POLICY_CHANGE' ? 'Rule change' : p.fareProposal?.serviceType === 'SHARED' ? 'Shared fare' : 'Regular fare'}</Badge>
                       {p.requiresPlatformReview && <Badge tone={p.platformDecision === 'APPROVED' ? 'green' : p.platformDecision === 'REJECTED' ? 'red' : 'amber'}>Platform review: {p.platformDecision?.toLowerCase() ?? 'pending'}</Badge>}
                     </div>
-                    <ProposalSummary p={p} />
+                    {p.type === 'POLICY_CHANGE' ? <PolicyChangeSummary changes={p.policyChanges} before={p.policyBefore} /> : <ProposalSummary p={p} />}
                     {p.rationale && <p className="mt-1 text-sm text-stone-600">{p.rationale}</p>}
                     <p className="mt-1 text-xs text-stone-500">By {p.proposedBy.name} · effective {dateTime(p.effectiveFrom)} · approvals {approvals}/{p.requiredApprovals}</p>
                     {p.votes.length > 0 && <ul className="mt-2 text-xs text-stone-600">{p.votes.map((v, i) => <li key={i}>{v.voter.name}: {v.decision.toLowerCase()}{v.comment ? ` — “${v.comment}”` : ''}</li>)}</ul>}

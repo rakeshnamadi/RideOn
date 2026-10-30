@@ -13,7 +13,7 @@ export function AdminLayout() {
         { to: '/admin', label: 'Overview', icon: Gauge, end: true },
         { to: '/admin/communities', label: 'Communities', icon: Building2 },
         { to: '/admin/drivers', label: 'Driver verification', icon: IdCard, badge: issues?.pendingVerifications },
-        { to: '/admin/fare-reviews', label: 'Fare reviews', icon: Scale, badge: issues?.pendingReviews },
+        { to: '/admin/fare-reviews', label: 'Governance reviews', icon: Scale, badge: issues?.pendingReviews },
         { to: '/admin/bookings', label: 'Bookings', icon: Car },
         { to: '/admin/complaints', label: 'Complaints', icon: MessageSquareWarning, badge: issues?.openComplaints },
         { to: '/admin/support', label: 'Support & incidents', icon: LifeBuoy, badge: issues?.openTickets },

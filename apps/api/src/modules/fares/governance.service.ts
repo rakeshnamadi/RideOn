@@ -1,4 +1,4 @@
-import type { CommunityPolicy, FareProposal, GovernanceProposal, ServiceType } from '@prisma/client';
+import type { CommunityPolicy, FareProposal, GovernanceProposal, Prisma, ServiceType } from '@prisma/client';
 import type { Request } from 'express';
 import { prisma, withTransaction, type Db, type Tx } from '../../db.js';
 import { conflict, forbidden, notFound, unprocessable } from '../../utils/errors.js';
@@ -209,7 +209,7 @@ export async function voteOnProposal(
     }
     if (proposal.votes.some((v) => v.voterId === ctx.userId)) throw conflict('You have already voted on this proposal', 'ALREADY_VOTED');
     await tx.governanceVote.create({ data: { proposalId, voterId: ctx.userId, decision, comment } });
-    await audit({ action: `fare.proposal_vote_${decision.toLowerCase()}`, entityType: 'GovernanceProposal', entityId: proposalId, communityId: proposal.communityId, after: { decision, comment } }, { ctx, req }, tx);
+    await audit({ action: `${auditPrefix(proposal)}.proposal_vote_${decision.toLowerCase()}`, entityType: 'GovernanceProposal', entityId: proposalId, communityId: proposal.communityId, after: { decision, comment } }, { ctx, req }, tx);
 
     // Default governance rule: any authorised approver can veto.
     if (decision === 'REJECT') {
@@ -218,8 +218,8 @@ export async function voteOnProposal(
     }
     const refreshed = { ...proposal, votes: [...proposal.votes, { decision }] };
     if (isReadyToApply(refreshed)) {
-      const rule = await applyFareProposal(tx, proposal, ctx, req);
-      return { status: 'APPLIED' as const, proposal, fareRuleId: rule.id };
+      await applyProposal(tx, proposal, ctx, req);
+      return { status: 'APPLIED' as const, proposal };
     }
     return { status: 'PENDING' as const, proposal };
   });
@@ -243,10 +243,10 @@ export async function platformReview(ctx: AuthContext, proposalId: string, decis
         ...(decision === 'REJECTED' ? { status: 'REJECTED', decidedAt: new Date() } : {}),
       },
     });
-    await audit({ action: `fare.platform_review_${decision.toLowerCase()}`, entityType: 'GovernanceProposal', entityId: proposalId, communityId: proposal.communityId, after: { decision, note } }, { ctx, req }, tx);
+    await audit({ action: `${auditPrefix(proposal)}.platform_review_${decision.toLowerCase()}`, entityType: 'GovernanceProposal', entityId: proposalId, communityId: proposal.communityId, after: { decision, note } }, { ctx, req }, tx);
     if (decision === 'REJECTED') return { status: 'REJECTED' as const, proposal };
     if (isReadyToApply({ ...proposal, platformDecision: 'APPROVED' })) {
-      await applyFareProposal(tx, proposal, ctx, req);
+      await applyProposal(tx, proposal, ctx, req);
       return { status: 'APPLIED' as const, proposal };
     }
     return { status: 'PENDING' as const, proposal };
@@ -264,7 +264,7 @@ export async function withdrawProposal(ctx: AuthContext, proposalId: string, req
   }
   const updated = await prisma.governanceProposal.updateMany({ where: { id: proposalId, status: 'PENDING' }, data: { status: 'WITHDRAWN', decidedAt: new Date() } });
   if (updated.count === 0) throw conflict('Only pending proposals can be withdrawn');
-  await audit({ action: 'fare.proposal_withdrawn', entityType: 'GovernanceProposal', entityId: proposalId, communityId: proposal.communityId }, { ctx, req });
+  await audit({ action: `${auditPrefix(proposal)}.proposal_withdrawn`, entityType: 'GovernanceProposal', entityId: proposalId, communityId: proposal.communityId }, { ctx, req });
 }
 
 /**
@@ -315,12 +315,22 @@ async function applyFareProposal(
 
 async function afterDecision(proposal: GovernanceProposal, status: 'APPLIED' | 'REJECTED' | 'PENDING') {
   if (status === 'PENDING') return;
+  const isPolicy = proposal.type === 'POLICY_CHANGE';
   await notify(proposal.proposedById, {
-    type: 'FARE_DECISION',
-    title: status === 'APPLIED' ? 'Fare proposal approved' : 'Fare proposal rejected',
+    type: isPolicy ? 'POLICY_DECISION' : 'FARE_DECISION',
+    title: `${isPolicy ? 'Policy' : 'Fare'} proposal ${status === 'APPLIED' ? 'approved' : 'rejected'}`,
     body: proposal.title,
     link: `/community/${proposal.communityId}/fares`,
   });
+  if (status === 'APPLIED' && isPolicy) {
+    await notify(await communityAdminUserIds(proposal.communityId), {
+      type: 'POLICY_CHANGE',
+      title: 'Community rules updated',
+      body: proposal.title,
+      link: `/community/${proposal.communityId}/settings`,
+    });
+    return;
+  }
   if (status === 'APPLIED') {
     const when = proposal.effectiveFrom > new Date() ? proposal.effectiveFrom.toISOString() : 'now';
     await prisma.announcement.create({
@@ -343,4 +353,102 @@ async function afterDecision(proposal: GovernanceProposal, status: 'APPLIED' | '
       link: '/fares',
     });
   }
+}
+
+// ───────────────────────────── Policy-change proposals ─────────────────────────────
+
+/**
+ * Policy fields that change how the community governs itself or what passengers are
+ * charged. They change only through an approved POLICY_CHANGE proposal — never by one
+ * administrator acting alone.
+ */
+export const GOVERNED_POLICY_FIELDS = [
+  'fareApprovalMode',
+  'requiredApprovals',
+  'allowSelfApproval',
+  'minNoticeHours',
+  'cancellationFreeWindowSec',
+  'cancellationFeePaise',
+] as const;
+export type GovernedPolicyField = (typeof GOVERNED_POLICY_FIELDS)[number];
+
+/** Operational settings the community head may adjust directly (still audited). */
+export const OPERATIONAL_POLICY_FIELDS = ['driverOfferTimeoutSec', 'bookingRequestTimeoutSec', 'seatHoldMinutes'] as const;
+
+export type PolicyChanges = Partial<Pick<CommunityPolicy, GovernedPolicyField>>;
+
+function auditPrefix(p: Pick<GovernanceProposal, 'type'>) {
+  return p.type === 'POLICY_CHANGE' ? 'policy' : 'fare';
+}
+
+export async function createPolicyProposal(
+  ctx: AuthContext,
+  communityId: string,
+  input: { title: string; rationale?: string; changes: PolicyChanges },
+  req?: Request,
+) {
+  assertCommunityPermission(ctx, communityId, 'community.fares.propose');
+  const policy = await getPolicy(communityId);
+  const changes: PolicyChanges = { ...input.changes };
+  if (changes.fareApprovalMode === 'SINGLE_APPROVER') changes.requiredApprovals = 1;
+  // Keep only fields that actually change.
+  const effective = Object.fromEntries(
+    Object.entries(changes).filter(([k, v]) => v !== undefined && policy[k as GovernedPolicyField] !== v),
+  ) as PolicyChanges;
+  if (Object.keys(effective).length === 0) throw unprocessable('The proposal does not change any rule', 'NO_CHANGE');
+  const resultingMode = effective.fareApprovalMode ?? policy.fareApprovalMode;
+  const resultingApprovals = effective.requiredApprovals ?? policy.requiredApprovals;
+  if (resultingMode === 'MULTI_APPROVER' && resultingApprovals < 2) {
+    throw unprocessable('Multi-approver mode needs at least 2 approvals', 'INVALID_POLICY');
+  }
+  const duplicate = await prisma.governanceProposal.findFirst({ where: { communityId, status: 'PENDING', type: 'POLICY_CHANGE' } });
+  if (duplicate) throw conflict('A policy proposal is already pending', 'PROPOSAL_PENDING');
+
+  const before = Object.fromEntries(Object.keys(effective).map((k) => [k, policy[k as GovernedPolicyField]]));
+  const proposal = await prisma.governanceProposal.create({
+    data: {
+      communityId,
+      type: 'POLICY_CHANGE',
+      title: input.title,
+      rationale: input.rationale,
+      proposedById: ctx.userId,
+      // Decided under the rules in force today, not the rules being proposed.
+      requiredApprovals: policy.fareApprovalMode === 'SINGLE_APPROVER' ? 1 : policy.requiredApprovals,
+      requiresPlatformReview: policy.fareApprovalMode === 'PLATFORM_REVIEW',
+      effectiveFrom: new Date(),
+      policyChanges: effective as Prisma.InputJsonValue,
+      policyBefore: before as Prisma.InputJsonValue,
+    },
+  });
+  await audit({ action: 'policy.proposal_created', entityType: 'GovernanceProposal', entityId: proposal.id, communityId, before, after: effective }, { ctx, req });
+  const approvers = await prisma.communityAdmin.findMany({ where: { communityId, active: true, role: { in: ['HEAD', 'APPROVER'] } }, select: { userId: true } });
+  await notify(
+    approvers.map((a) => a.userId).filter((id) => id !== ctx.userId),
+    { type: 'POLICY_PROPOSAL', title: 'Rule change awaiting review', body: input.title, link: `/community/${communityId}/fares` },
+  );
+  if (proposal.requiresPlatformReview) {
+    await notify(await superAdminUserIds(), { type: 'POLICY_REVIEW', title: 'Policy proposal needs platform review', body: input.title, link: '/admin/fare-reviews' });
+  }
+  return proposal;
+}
+
+async function applyPolicyProposal(tx: Tx, proposal: GovernanceProposal, ctx: AuthContext, req?: Request) {
+  const changes = (proposal.policyChanges ?? {}) as PolicyChanges;
+  const before = await tx.communityPolicy.findUnique({ where: { communityId: proposal.communityId } });
+  const updated = await tx.communityPolicy.upsert({
+    where: { communityId: proposal.communityId },
+    create: { communityId: proposal.communityId, ...changes },
+    update: changes,
+  });
+  await tx.governanceProposal.update({ where: { id: proposal.id }, data: { status: 'APPROVED', decidedAt: new Date() } });
+  await audit(
+    { action: 'policy.changed', entityType: 'CommunityPolicy', entityId: updated.id, communityId: proposal.communityId, before, after: { ...changes, proposalId: proposal.id } },
+    { ctx, req },
+    tx,
+  );
+}
+
+async function applyProposal(tx: Tx, proposal: GovernanceProposal & { fareProposal: FareProposal | null }, ctx: AuthContext, req?: Request) {
+  if (proposal.type === 'POLICY_CHANGE') return applyPolicyProposal(tx, proposal, ctx, req);
+  await applyFareProposal(tx, proposal, ctx, req);
 }

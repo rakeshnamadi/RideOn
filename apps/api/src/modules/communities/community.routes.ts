@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { auth, authenticate } from '../../middleware/auth.js';
 import { communityId, requireCommunity } from '../../middleware/community-scope.js';
-import { badRequest, conflict, notFound } from '../../utils/errors.js';
+import { badRequest, conflict, notFound, unprocessable } from '../../utils/errors.js';
 import { isValidPolygon } from '../../utils/geo.js';
 import { created, ok, pageMeta, pagination, parse, param } from '../../utils/http.js';
 import { audit } from '../audit/audit.service.js';
 import { communityPermissionsFor } from '../auth/auth-context.js';
 import { notify } from '../notifications/notification.service.js';
 import { activeFareRules } from '../fares/fare.service.js';
+import { createPolicyProposal, GOVERNED_POLICY_FIELDS, OPERATIONAL_POLICY_FIELDS } from '../fares/governance.service.js';
 import { PhoneSchema } from '../auth/auth.routes.js';
 
 export const communityRoutes = Router();
@@ -150,17 +151,42 @@ communityRoutes.get('/:communityId/policy', requireCommunity('community.view'), 
 });
 
 /**
- * Community heads can tune operating rules. Platform-controlled limits
- * (maxFareIncreasePercent, allowDistanceFares, communityFeeBps) are set only via /admin.
+ * Community heads can tune operational settings directly. Governance rules and passenger
+ * charges change only through an approved policy proposal (POST …/policy-proposals).
+ * Platform-controlled limits (maxFareIncreasePercent, allowDistanceFares, communityFeeBps)
+ * are set only via /admin.
  */
 communityRoutes.put('/:communityId/policy', requireCommunity('community.policy.edit'), async (req, res) => {
   const id = communityId(req);
-  const data = parse(PolicySchema, req.body);
-  if (data.fareApprovalMode === 'SINGLE_APPROVER') data.requiredApprovals = 1;
+  const parsed = parse(PolicySchema, req.body);
+  const governed = GOVERNED_POLICY_FIELDS.filter((f) => parsed[f] !== undefined);
+  if (governed.length) {
+    throw unprocessable('These rules change only through a community proposal and vote', 'GOVERNANCE_REQUIRED', governed);
+  }
+  const data = Object.fromEntries(OPERATIONAL_POLICY_FIELDS.filter((f) => parsed[f] !== undefined).map((f) => [f, parsed[f]]));
   const before = await prisma.communityPolicy.findUnique({ where: { communityId: id } });
   const policy = await prisma.communityPolicy.upsert({ where: { communityId: id }, create: { communityId: id, ...data }, update: data });
   await audit({ action: 'community.policy_updated', entityType: 'CommunityPolicy', entityId: policy.id, communityId: id, before, after: data }, { ctx: req.auth, req });
   ok(res, policy);
+});
+
+const PolicyProposalSchema = z.object({
+  title: z.string().trim().min(5).max(200),
+  rationale: z.string().trim().max(5000).optional(),
+  changes: PolicySchema.pick({
+    fareApprovalMode: true,
+    requiredApprovals: true,
+    allowSelfApproval: true,
+    minNoticeHours: true,
+    cancellationFreeWindowSec: true,
+    cancellationFeePaise: true,
+  }),
+});
+
+/** Propose a change to governance rules or passenger charges; approvers vote on it like a fare. */
+communityRoutes.post('/:communityId/policy-proposals', requireCommunity('community.fares.propose'), async (req, res) => {
+  const body = parse(PolicyProposalSchema, req.body);
+  created(res, await createPolicyProposal(auth(req), communityId(req), body, req));
 });
 
 // ─────────── Service areas ───────────

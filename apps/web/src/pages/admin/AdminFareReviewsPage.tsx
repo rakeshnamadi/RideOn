@@ -3,9 +3,13 @@ import { Badge, Button, Card, PageHeader, QueryState, StatusBadge, Textarea, Emp
 import { useAction, useApi } from '@/hooks/api';
 import { api } from '@/services/api';
 import { dateTime, inr } from '@/utils/format';
+import { PolicyChangeSummary } from '@/features/governance/PolicyChangeSummary';
 
 interface Review {
   id: string;
+  type: 'FARE_CHANGE' | 'POLICY_CHANGE';
+  policyChanges: Record<string, unknown> | null;
+  policyBefore: Record<string, unknown> | null;
   title: string;
   rationale: string | null;
   status: string;
@@ -28,7 +32,7 @@ export default function AdminFareReviewsPage() {
   });
   return (
     <div>
-      <PageHeader title="Fare reviews" subtitle="Proposals that exceed a community's increase limit, or communities that require platform review. Community governance still applies." />
+      <PageHeader title="Governance reviews" subtitle="Fare and rule proposals that need platform review — large fare increases, or communities that opted into platform review. Community votes still apply." />
       <QueryState query={q} empty={(d) => d.length === 0 && <EmptyState title="No proposals need platform review" />}>
         {(list) => (
           <div className="space-y-4">
@@ -45,6 +49,7 @@ export default function AdminFareReviewsPage() {
                       {f.serviceType === 'REGULAR' ? `Base ${inr(f.baseFarePaise)}/${(f.baseDistanceMeters / 1000).toFixed(1)} km, ${inr(f.perKmPaise)}/km, min ${inr(f.minimumFarePaise)}, night +${f.nightSurchargeBps / 100}%` : `Seat ${inr(f.perSeatPaise)} + ${inr(f.perStopPaise)}/stop`}
                     </p>
                   )}
+                  {p.type === 'POLICY_CHANGE' && <PolicyChangeSummary changes={p.policyChanges} before={p.policyBefore} />}
                   {p.rationale && <p className="mt-1 text-sm text-stone-600">“{p.rationale}”</p>}
                   <p className="mt-1 text-xs text-stone-500">Community approvals {approvals}/{p.requiredApprovals} · platform: {p.platformDecision?.toLowerCase() ?? 'pending'}</p>
                   {p.platformReviewNote && <p className="text-xs text-stone-500">Note: {p.platformReviewNote}</p>}

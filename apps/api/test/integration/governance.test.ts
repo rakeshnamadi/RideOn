@@ -130,7 +130,8 @@ describe('community governance: routes and fare approvals', () => {
     const inHead = await login(PHONES.inHead);
     // Indiranagar requires 2 approvals; add a second approver.
     await api.post(`/api/v1/communities/${inCommunity.id}/admins`).set(bearer(inHead)).send({ phone: PHONES.kmApprover, role: 'APPROVER' }).expect(201);
-    await api.put(`/api/v1/communities/${inCommunity.id}/policy`).set(bearer(inHead)).send({ allowSelfApproval: true }).expect(200);
+    // Test setup only: governance rules normally change through a policy proposal (tested below).
+    await prisma.communityPolicy.update({ where: { communityId: inCommunity.id }, data: { allowSelfApproval: true } });
     const p = await api.post(`/api/v1/fares/communities/${inCommunity.id}/proposals`).set(bearer(inHead)).send({
       serviceType: 'REGULAR', title: 'Small change', baseFarePaise: 3600, baseDistanceMeters: 2000, perKmPaise: 1500, minimumFarePaise: 3000, effectiveFrom: new Date(Date.now() + 60_000).toISOString(),
     });
@@ -140,5 +141,53 @@ describe('community governance: routes and fare approvals', () => {
     const approverToken = await login(PHONES.kmApprover);
     const second = await api.post(`/api/v1/fares/proposals/${p.body.data.id}/votes`).set(bearer(approverToken)).send({ decision: 'APPROVE' });
     expect(second.body.data.status).toBe('APPLIED');
+  });
+
+  it('governance rules cannot be changed by one administrator; operational settings can', async () => {
+    const direct = await api.put(`/api/v1/communities/${km}/policy`).set(bearer(head)).send({ cancellationFeePaise: 5000 });
+    expect(direct.status).toBe(422);
+    expect(direct.body.error.code).toBe('GOVERNANCE_REQUIRED');
+    expect(direct.body.error.details).toEqual(['cancellationFeePaise']);
+
+    const ops = await api.put(`/api/v1/communities/${km}/policy`).set(bearer(head)).send({ seatHoldMinutes: 7 });
+    expect(ops.status).toBe(200);
+    expect(ops.body.data.seatHoldMinutes).toBe(7);
+  });
+
+  it('a policy proposal changes the rules only after an approver votes for it', async () => {
+    const before = await prisma.communityPolicy.findUniqueOrThrow({ where: { communityId: km } });
+    const res = await api.post(`/api/v1/communities/${km}/policy-proposals`).set(bearer(admin)).send({
+      title: 'Longer free cancellation window',
+      rationale: 'Passengers asked for more time after a driver accepts',
+      changes: { cancellationFreeWindowSec: 300, cancellationFeePaise: before.cancellationFeePaise },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.type).toBe('POLICY_CHANGE');
+    // Unchanged fields are dropped from the proposal.
+    expect(res.body.data.policyChanges).toEqual({ cancellationFreeWindowSec: 300 });
+    expect(res.body.data.policyBefore).toEqual({ cancellationFreeWindowSec: before.cancellationFreeWindowSec });
+    const id = res.body.data.id;
+
+    // Nothing changes yet; a second pending policy proposal is refused; approvers can't propose.
+    expect((await prisma.communityPolicy.findUniqueOrThrow({ where: { communityId: km } })).cancellationFreeWindowSec).toBe(before.cancellationFreeWindowSec);
+    expect((await api.post(`/api/v1/communities/${km}/policy-proposals`).set(bearer(admin)).send({ title: 'Another change', changes: { minNoticeHours: 24 } })).status).toBe(409);
+    expect((await api.post(`/api/v1/communities/${km}/policy-proposals`).set(bearer(approver)).send({ title: 'Approver proposal', changes: { minNoticeHours: 24 } })).status).toBe(403);
+    const noChange = await api.post(`/api/v1/communities/${km}/policy-proposals`).set(bearer(admin)).send({ title: 'No real change', changes: { minNoticeHours: before.minNoticeHours } });
+    expect(noChange.status).toBe(422);
+    expect(noChange.body.error.code).toBe('NO_CHANGE');
+
+    const vote = await api.post(`/api/v1/fares/proposals/${id}/votes`).set(bearer(approver)).send({ decision: 'APPROVE', comment: 'Agreed at the members meeting' });
+    expect(vote.body.data.status).toBe('APPLIED');
+    const after = await prisma.communityPolicy.findUniqueOrThrow({ where: { communityId: km } });
+    expect(after.cancellationFreeWindowSec).toBe(300);
+    expect(after.cancellationFeePaise).toBe(before.cancellationFeePaise);
+    expect(await prisma.auditLog.count({ where: { action: 'policy.changed', communityId: km } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { action: 'policy.proposal_vote_approve', entityId: id } })).toBe(1);
+  });
+
+  it('rejects invalid policy combinations', async () => {
+    const res = await api.post(`/api/v1/communities/${km}/policy-proposals`).set(bearer(admin)).send({ title: 'Multi with one approval', changes: { fareApprovalMode: 'MULTI_APPROVER', requiredApprovals: 1 } });
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('INVALID_POLICY');
   });
 });
