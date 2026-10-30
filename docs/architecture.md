@@ -88,6 +88,9 @@ All jobs use conditional updates, so running more than one API instance is safe;
 - **Community roles** (`HEAD`, `ADMIN`, `APPROVER`, `OPERATOR`) map to permissions in code (`COMMUNITY_ROLE_PERMISSIONS`); global permissions are seeded into the `roles`/`permissions` tables.
 - **Super admins have oversight, not governance**: they can view and moderate any community but cannot propose or vote on fares; they act through the separate platform-review step.
 - **Default veto rule**: any authorised approver's rejection rejects a proposal. Approval needs `requiredApprovals` approvals (and platform approval where required).
+- **Rules vs settings**: governance rules and passenger charges (approval mode, approvals required, self-approval, notice period, free-cancellation window, cancellation fee) change only through an approved POLICY_CHANGE proposal, decided under the rules in force when it was proposed. Operational settings (offer/request timeouts, seat-hold time) stay directly editable by the community head and are audited.
+- **Route paths** come from one multi-waypoint routing request when a route is created or its stops change, are stored on the route, and are backfilled in the background when missing; maps fall back to dashed straight segments.
+- **Brand**: the positioning ("Your city. Your people. Your ride.") and the two audience promises live in the i18n dictionaries (`brand.*`, `home.*`), so every surface and language uses the same words.
 - **Cancellation fees are recorded** on the booking and refunds are reduced accordingly for prepaid bookings; collecting a fee from a cash passenger is out of scope for the pilot.
 - **Shared fares** are per seat: a base amount for the first stop travelled plus a per-stop increment, floored by a minimum, rounded to the rupee.
 - **All money is integer paise**; fares round to the nearest rupee and the rounding is shown as a line item.

@@ -28,10 +28,10 @@ Base URL: `/api/v1`. JSON in and out.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Liveness + DB check |
-| GET | `/config` | Enabled payment methods, provider availability, feature flags, emergency number |
+| GET | `/config` | Enabled payment methods, provider availability, feature flags, emergency number, and the **published platform fees** per service type |
 | GET | `/cities` | Active cities |
 | GET | `/communities` | Active communities (`?cityId`, `?search`) |
-| GET | `/communities/:id/public` | Published profile, service areas, stands/stops, active routes + schedules, current/upcoming fares, passenger announcements |
+| GET | `/communities/:id/public` | Published profile, service areas, stands/stops, active routes + schedules + road path (`pathGeometry`, `pathDistanceMeters`), current/upcoming fares, community fee, passenger announcements |
 | GET | `/fares/communities/:id` | Current regular and shared fare rules, upcoming changes |
 | GET | `/fares/communities/:id/history` | Fare revision history |
 | GET | `/fares/caps` | Platform fare caps |
@@ -104,7 +104,9 @@ Every route checks the caller's permission **in that community**; records are al
 |---|---|---|
 | GET | `/console` | view — community, my permissions, counters |
 | PATCH | `` (the community) | profile.edit |
-| GET/PUT | `/policy` | view / policy.edit |
+| GET | `/policy` | view |
+| PUT | `/policy` — **operational settings only** (`driverOfferTimeoutSec`, `bookingRequestTimeoutSec`, `seatHoldMinutes`); governed fields answer `422 GOVERNANCE_REQUIRED` | policy.edit |
+| POST | `/policy-proposals` `{ title, rationale?, changes: { fareApprovalMode?, requiredApprovals?, allowSelfApproval?, minNoticeHours?, cancellationFreeWindowSec?, cancellationFeePaise? } }` — unchanged fields are dropped; one pending policy proposal at a time; decided under the rules in force today | fares.propose |
 | GET/POST/PATCH/DELETE | `/service-areas[/:areaId]` | view / areas.manage |
 | GET/POST/DELETE | `/admins[/:adminId]` | view / admins.manage |
 | GET/POST | `/announcements` | view / announcements.manage |
@@ -124,8 +126,8 @@ Related:
 |---|---|---|
 | GET | `/shared-trips/community/:communityId` | bookings.view |
 | POST | `/shared-trips/:id/assign` `{driverId}` · `/shared-trips/:id/cancel` `{reason}` | queue.manage · routes.manage |
-| GET/POST | `/fares/communities/:communityId/proposals` | view · fares.propose |
-| POST | `/fares/proposals/:id/votes` `{decision: APPROVE\|REJECT, comment?}` | fares.approve |
+| GET/POST | `/fares/communities/:communityId/proposals` (GET lists fare **and** policy proposals; `type`, `policyChanges`, `policyBefore`) | view · fares.propose |
+| POST | `/fares/proposals/:id/votes` `{decision: APPROVE\|REJECT, comment?}` — applies either proposal type once approvals (and any platform review) are complete | fares.approve |
 | POST | `/fares/proposals/:id/withdraw` | proposer or head |
 | GET/PATCH | `/complaints?communityId&status` · `/complaints/:id` | complaints.manage |
 | GET | `/reports/communities/:id/statements` | statements.view |

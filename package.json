@@ -12,6 +12,7 @@
     "dev:web": "npm run dev -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "lint": "eslint .",
     "test": "npm run test -w apps/api && npm run test -w apps/web",
     "db:migrate": "npm run db:migrate -w apps/api",
     "db:seed": "npm run db:seed -w apps/api",
@@ -25,5 +26,12 @@
     "@prisma/engines": true,
     "@prisma/client@6.19.3": true,
     "prisma@6.19.3": true
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.5.0",
+    "typescript-eslint": "^8.72.1"
   }
 }

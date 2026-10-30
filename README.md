@@ -1,5 +1,7 @@
 # RideOn — community-governed auto transportation
 
+> **Your city. Your people. Your ride.**
+
 RideOn is a booking platform for auto-rickshaws in India where **local driver communities govern their own networks**: they manage members, stands, service areas, shared-auto routes and fare proposals, while the platform provides booking, maps, payments, verification, reporting and support.
 
 It has four consoles:
@@ -12,6 +14,16 @@ It has four consoles:
 | Platform admin | `/admin` | Communities, verification, fare reviews, fees, flags, users, support, audit, reports |
 
 Published fares and routes are browsable without an account at `/fares`.
+
+## Positioning
+
+| | Message | Where it shows up in the product |
+|---|---|---|
+| Core | **Your city. Your people. Your ride.** | Landing hero and closing call to action, sign-in panel, every console sidebar, footer |
+| Passengers | **The freedom to travel your way** | Whole auto or one seat, fare shown and locked before you go, public fare tables, start PIN / trip sharing / emergency button, English or Hindi. Shown on the landing page, sign-up, and above the booking form. |
+| Drivers | **Respect for the people who move your city** | Fares set by the community (not an algorithm), every rupee shown per trip, first-come turns at the stand, recorded decisions and appeals. Shown on the landing page (with a live fee breakdown), driver sign-up, and the driver home banner. |
+
+The landing page’s example trip and earnings breakdown use live data — a real fare estimate between two published stops and the real platform and community fees — never invented figures. The visual system (“Marigold Transit”: ink green, auto-rickshaw marigold, warm paper; Bricolage Grotesque over Inter) lives in `apps/web/src/index.css`.
 
 ## Stack
 
@@ -110,6 +122,7 @@ This runs the API suite (unit + integration against the `TEST_DATABASE_URL` MySQ
 | `npm run dev:api` / `npm run dev:web` | Run API / web in watch mode |
 | `npm run build` | Production build of both apps |
 | `npm run typecheck` | Type-check both apps |
+| `npm run lint` | ESLint (TypeScript + React Hooks rules) over both apps |
 | `npm run db:migrate` | Apply migrations (`prisma migrate deploy`) |
 | `npm run db:seed` | Load development demo data |
 | `npm run db:reset` | Drop and recreate the dev database (destructive; Prisma asks for confirmation) |
