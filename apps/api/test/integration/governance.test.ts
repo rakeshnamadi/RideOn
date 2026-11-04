@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { api, bearer, communityBySlug, login, PHONES, prisma, resetDatabase, SILK_BOARD, SONY_WORLD } from '../helpers.js';
+import { api, bearer, communityBySlug, login, PHONES, prisma, resetDatabase, DROP_POINT, PICKUP_POINT } from '../helpers.js';
 
 describe('community governance: routes and fare approvals', () => {
   let km: string;
@@ -9,20 +9,20 @@ describe('community governance: routes and fare approvals', () => {
 
   beforeAll(async () => {
     await resetDatabase();
-    km = (await communityBySlug('koramangala-autos')).id;
+    km = (await communityBySlug('ainavilli-autos')).id;
     [admin, approver, head] = await Promise.all([login(PHONES.kmAdmin), login(PHONES.kmApprover), login(PHONES.kmHead)]);
   });
 
   it('community admin creates a shared route with ordered stops and a schedule', async () => {
     const points = await prisma.pickupPoint.findMany({ where: { communityId: km }, orderBy: { name: 'asc' } });
     const res = await api.post(`/api/v1/communities/${km}/routes`).set(bearer(admin)).send({
-      code: 'KM-2',
-      name: 'Forum → Madiwala',
+      code: 'AV-2',
+      name: 'Muktheswaram → Pothukurru',
       maxSeats: 3,
       stops: [
-        { pickupPointId: points.find((p) => p.name.startsWith('Forum'))!.id, offsetMinutes: 0 },
-        { pickupPointId: points.find((p) => p.name.startsWith('BDA'))!.id, offsetMinutes: 5 },
-        { pickupPointId: points.find((p) => p.name.startsWith('Madiwala'))!.id, offsetMinutes: 12 },
+        { pickupPointId: points.find((p) => p.name.startsWith('Muktheswaram'))!.id, offsetMinutes: 0 },
+        { pickupPointId: points.find((p) => p.name.startsWith('Sanapalli'))!.id, offsetMinutes: 5 },
+        { pickupPointId: points.find((p) => p.name.startsWith('Pothukurru'))!.id, offsetMinutes: 12 },
       ],
     });
     expect(res.status).toBe(201);
@@ -42,9 +42,9 @@ describe('community governance: routes and fare approvals', () => {
     expect(activate.body.error.code).toBe('NO_FARE_RULE');
 
     // Stops from another community are rejected.
-    const foreign = await prisma.pickupPoint.findFirstOrThrow({ where: { community: { slug: 'indiranagar-autos' } } });
+    const foreign = await prisma.pickupPoint.findFirstOrThrow({ where: { community: { slug: 'amalapuram-autos' } } });
     const bad = await api.post(`/api/v1/communities/${km}/routes`).set(bearer(admin)).send({
-      code: 'KM-X', name: 'Bad route', maxSeats: 3,
+      code: 'AV-X', name: 'Bad route', maxSeats: 3,
       stops: [{ pickupPointId: foreign.id, offsetMinutes: 0 }, { pickupPointId: points[0]!.id, offsetMinutes: 5 }],
     });
     expect(bad.status).toBe(422);
@@ -56,7 +56,7 @@ describe('community governance: routes and fare approvals', () => {
   it('community admin proposes a fare change; approvers cannot propose and admins cannot approve', async () => {
     // A passenger books under the current fare first.
     const passenger = await login(PHONES.passenger);
-    const q = await api.post('/api/v1/fares/quotes').set(bearer(passenger)).send({ pickup: SONY_WORLD, drop: SILK_BOARD });
+    const q = await api.post('/api/v1/fares/quotes').set(bearer(passenger)).send({ pickup: PICKUP_POINT, drop: DROP_POINT });
     const b = await api.post('/api/v1/bookings').set(bearer(passenger)).send({ quoteId: q.body.data.quoteId, idempotencyKey: 'gov-before-1' });
     bookingBefore = { id: b.body.data.id, quotedFarePaise: b.body.data.quotedFarePaise };
 
@@ -117,8 +117,10 @@ describe('community governance: routes and fare approvals', () => {
     const superAdmin = await login(PHONES.superAdmin);
     const reviews = await api.get('/api/v1/fares/reviews').set(bearer(superAdmin));
     expect(reviews.body.data.some((p: { id: string }) => p.id === id)).toBe(true);
-    // Super admins cannot vote as community approvers…
-    expect((await api.post(`/api/v1/fares/proposals/${id}/votes`).set(bearer(superAdmin)).send({ decision: 'APPROVE' })).status).toBe(403);
+    // The super admin controls everything: they may vote too, but platform review is still required…
+    const saVote = await api.post(`/api/v1/fares/proposals/${id}/votes`).set(bearer(superAdmin)).send({ decision: 'APPROVE' });
+    expect(saVote.status).toBe(200);
+    expect(saVote.body.data.status).toBe('PENDING');
     // …and community admins cannot perform the platform review.
     expect((await api.post(`/api/v1/fares/reviews/${id}`).set(bearer(head)).send({ decision: 'APPROVED' })).status).toBe(403);
     const review = await api.post(`/api/v1/fares/reviews/${id}`).set(bearer(superAdmin)).send({ decision: 'REJECTED', note: 'Exceeds state notified fare' });
@@ -126,7 +128,7 @@ describe('community governance: routes and fare approvals', () => {
   });
 
   it('honours multi-approver policies', async () => {
-    const inCommunity = await communityBySlug('indiranagar-autos');
+    const inCommunity = await communityBySlug('amalapuram-autos');
     const inHead = await login(PHONES.inHead);
     // Indiranagar requires 2 approvals; add a second approver.
     await api.post(`/api/v1/communities/${inCommunity.id}/admins`).set(bearer(inHead)).send({ phone: PHONES.kmApprover, role: 'APPROVER' }).expect(201);

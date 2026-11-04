@@ -1,15 +1,28 @@
+import { Prisma, type CommunityRole } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { auth, authenticate } from '../../middleware/auth.js';
 import { communityId, requireCommunity } from '../../middleware/community-scope.js';
-import { badRequest, conflict, notFound, unprocessable } from '../../utils/errors.js';
+import { badRequest, conflict, forbidden, notFound, unprocessable } from '../../utils/errors.js';
 import { isValidPolygon } from '../../utils/geo.js';
 import { created, ok, pageMeta, pagination, parse, param } from '../../utils/http.js';
 import { audit } from '../audit/audit.service.js';
-import { communityPermissionsFor } from '../auth/auth-context.js';
+import { communityPermissionsFor, communityRoleOf, isLocalAdmin, isSuperAdmin, type AuthContext } from '../auth/auth-context.js';
+import { deletePrivateFile, detectMime, logoUpload, readPrivateFile, storePrivateFile } from '../../services/uploads.js';
+import {
+  assignmentPermissions,
+  COMMUNITY_PERMISSION_LABELS,
+  COMMUNITY_PERMISSIONS,
+  COMMUNITY_ROLE_PERMISSIONS,
+  DELEGABLE_PERMISSIONS,
+  DELEGABLE_ROLES,
+  LOCAL_ADMIN_ONLY_PERMISSIONS,
+  type CommunityPermission,
+} from '../auth/permissions.js';
 import { notify } from '../notifications/notification.service.js';
 import { activeFareRules } from '../fares/fare.service.js';
+import { withLogoUrl } from './branding.js';
 import { backfillRoutePaths } from './route-path.js';
 import { createPolicyProposal, GOVERNED_POLICY_FIELDS, OPERATIONAL_POLICY_FIELDS } from '../fares/governance.service.js';
 import { PhoneSchema } from '../auth/auth.routes.js';
@@ -31,6 +44,10 @@ communityRoutes.get('/', async (req, res) => {
       name: true,
       slug: true,
       description: true,
+      shortName: true,
+      tagline: true,
+      brandColor: true,
+      logoUpdatedAt: true,
       centerLat: true,
       centerLng: true,
       city: { select: { id: true, name: true, state: true } },
@@ -38,7 +55,7 @@ communityRoutes.get('/', async (req, res) => {
     },
     orderBy: { name: 'asc' },
   });
-  ok(res, items);
+  ok(res, items.map(withLogoUrl));
 });
 
 /** Published information: fares, zones, stands and routes. No private driver or booking data. */
@@ -52,6 +69,15 @@ communityRoutes.get('/:communityId/public', async (req, res) => {
       slug: true,
       description: true,
       contactPhone: true,
+      contactEmail: true,
+      shortName: true,
+      tagline: true,
+      address: true,
+      pincode: true,
+      foundedYear: true,
+      brandColor: true,
+      logoUpdatedAt: true,
+      registrationNumber: true,
       centerLat: true,
       centerLng: true,
       city: { select: { name: true, state: true, timezone: true } },
@@ -88,7 +114,19 @@ communityRoutes.get('/:communityId/public', async (req, res) => {
   });
   if (!community) throw notFound('Community');
   backfillRoutePaths(community.sharedRoutes);
-  ok(res, { ...community, fares: await activeFareRules(id) });
+  ok(res, { ...withLogoUrl(community), fares: await activeFareRules(id) });
+});
+
+/** A union's logo. Public: it appears on fare pages and booking screens. */
+communityRoutes.get('/:communityId/logo', async (req, res) => {
+  const c = await prisma.community.findUnique({ where: { id: communityId(req) }, select: { logoKey: true, logoMime: true } });
+  if (!c?.logoKey || !c.logoMime) throw notFound('Logo');
+  const file = await readPrivateFile(c.logoKey);
+  res.setHeader('Content-Type', c.logoMime);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.send(file);
 });
 
 // ─────────── Community console ───────────
@@ -109,7 +147,8 @@ communityRoutes.get('/:communityId/console', requireCommunity('community.view'),
     prisma.driverAvailability.count({ where: { communityId: id, status: { in: ['ONLINE', 'ON_TRIP'] } } }),
   ]);
   ok(res, {
-    community,
+    community: withLogoUrl(community),
+    role: communityRoleOf(auth(req), id),
     permissions: communityPermissionsFor(auth(req), id),
     counts: { pendingMembers, pendingVehicles, openComplaints, pendingProposals, onlineDrivers },
   });
@@ -121,6 +160,12 @@ const ProfileSchema = z.object({
   contactPhone: z.string().trim().max(20).nullable().optional(),
   contactEmail: z.string().trim().email().max(191).nullable().optional(),
   registrationNumber: z.string().trim().max(100).nullable().optional(),
+  shortName: z.string().trim().max(40).nullable().optional(),
+  tagline: z.string().trim().max(200).nullable().optional(),
+  address: z.string().trim().max(300).nullable().optional(),
+  pincode: z.string().trim().regex(/^[1-9]\d{5}$/, 'Enter a 6-digit Indian pincode').nullable().optional(),
+  foundedYear: z.number().int().min(1900).max(new Date().getFullYear()).nullable().optional(),
+  brandColor: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Use a hex colour like #0F4D3A').nullable().optional(),
   centerLat: z.number().min(-90).max(90).optional(),
   centerLng: z.number().min(-180).max(180).optional(),
 });
@@ -131,7 +176,29 @@ communityRoutes.patch('/:communityId', requireCommunity('community.profile.edit'
   const before = await prisma.community.findUniqueOrThrow({ where: { id } });
   const updated = await prisma.community.update({ where: { id }, data });
   await audit({ action: 'community.profile_updated', entityType: 'Community', entityId: id, communityId: id, before, after: data }, { ctx: req.auth, req });
-  ok(res, updated);
+  ok(res, withLogoUrl(updated));
+});
+
+communityRoutes.post('/:communityId/logo', requireCommunity('community.profile.edit'), logoUpload.single('logo'), async (req, res) => {
+  const id = communityId(req);
+  if (!req.file) throw badRequest('Attach an image in the "logo" field');
+  const mime = detectMime(req.file.buffer);
+  if (mime !== 'image/png' && mime !== 'image/jpeg') throw badRequest('Logos must be PNG or JPEG images');
+  const before = await prisma.community.findUniqueOrThrow({ where: { id }, select: { logoKey: true } });
+  const { storageKey, mimeType } = await storePrivateFile(req.file.buffer);
+  const updated = await prisma.community.update({ where: { id }, data: { logoKey: storageKey, logoMime: mimeType, logoUpdatedAt: new Date() } });
+  await deletePrivateFile(before.logoKey);
+  await audit({ action: 'community.logo_updated', entityType: 'Community', entityId: id, communityId: id, after: { sizeBytes: req.file.size, mimeType } }, { ctx: req.auth, req });
+  ok(res, withLogoUrl(updated));
+});
+
+communityRoutes.delete('/:communityId/logo', requireCommunity('community.profile.edit'), async (req, res) => {
+  const id = communityId(req);
+  const before = await prisma.community.findUniqueOrThrow({ where: { id }, select: { logoKey: true } });
+  await prisma.community.update({ where: { id }, data: { logoKey: null, logoMime: null, logoUpdatedAt: null } });
+  await deletePrivateFile(before.logoKey);
+  await audit({ action: 'community.logo_removed', entityType: 'Community', entityId: id, communityId: id }, { ctx: req.auth, req });
+  ok(res, { removed: true });
 });
 
 // ─────────── Policy ───────────
@@ -234,43 +301,113 @@ communityRoutes.delete('/:communityId/service-areas/:areaId', requireCommunity('
   ok(res, { deleted: true });
 });
 
-// ─────────── Community administrators ───────────
+// ─────────── Union team: roles and delegated permissions ───────────
+
+const RoleSchema = z.enum(['LOCAL_ADMIN', 'REPORTER', 'APPROVER', 'OPERATOR']);
+const PermissionListSchema = z.array(z.enum(COMMUNITY_PERMISSIONS)).max(COMMUNITY_PERMISSIONS.length).nullable();
+
+/**
+ * Who may assign or edit a role: the platform super admin, any role; a local admin, only
+ * the roles below them (local admins are appointed by the platform).
+ */
+function assertCanManageRole(ctx: AuthContext, communityId: string, role: CommunityRole) {
+  if (isSuperAdmin(ctx)) return;
+  if (!isLocalAdmin(ctx, communityId)) throw forbidden('Only a local admin can manage the union team');
+  if (!(DELEGABLE_ROLES as readonly string[]).includes(role)) throw forbidden('Only the platform can appoint local admins');
+}
+
+function validateCustomPermissions(role: CommunityRole, permissions: string[] | null | undefined) {
+  if (permissions === undefined || permissions === null) return permissions;
+  if (role === 'LOCAL_ADMIN') throw unprocessable('Local admins always have every permission', 'INVALID_PERMISSIONS');
+  const forbiddenOnes = permissions.filter((p) => LOCAL_ADMIN_ONLY_PERMISSIONS.includes(p as CommunityPermission));
+  if (forbiddenOnes.length) throw unprocessable('These permissions stay with local admins', 'INVALID_PERMISSIONS', forbiddenOnes);
+  return [...new Set(permissions)];
+}
+
+function teamView(a: { id: string; role: CommunityRole; permissions: unknown; active: boolean; createdAt: Date; user: { id: string; name: string; phone: string } }) {
+  return { ...a, customPermissions: Array.isArray(a.permissions) ? a.permissions : null, permissions: assignmentPermissions(a.role, a.permissions) };
+}
+
+/** Catalogue the team screen needs: labels, role defaults, and what may be delegated. */
+communityRoutes.get('/:communityId/team-catalog', requireCommunity('community.view'), async (req, res) => {
+  const ctx = auth(req);
+  const id = communityId(req);
+  ok(res, {
+    permissions: COMMUNITY_PERMISSIONS.map((key) => ({ key, label: COMMUNITY_PERMISSION_LABELS[key], delegable: DELEGABLE_PERMISSIONS.includes(key) })),
+    roleDefaults: COMMUNITY_ROLE_PERMISSIONS,
+    assignableRoles: isSuperAdmin(ctx) ? RoleSchema.options : isLocalAdmin(ctx, id) ? DELEGABLE_ROLES : [],
+  });
+});
 
 communityRoutes.get('/:communityId/admins', requireCommunity('community.view'), async (req, res) => {
   const admins = await prisma.communityAdmin.findMany({
     where: { communityId: communityId(req) },
-    select: { id: true, role: true, active: true, createdAt: true, user: { select: { id: true, name: true, phone: true } } },
-    orderBy: { createdAt: 'asc' },
+    select: { id: true, role: true, permissions: true, active: true, createdAt: true, user: { select: { id: true, name: true, phone: true } } },
+    orderBy: [{ active: 'desc' }, { createdAt: 'asc' }],
   });
-  ok(res, admins);
+  ok(res, admins.map(teamView));
 });
 
 communityRoutes.post('/:communityId/admins', requireCommunity('community.admins.manage'), async (req, res) => {
+  const ctx = auth(req);
   const id = communityId(req);
-  const body = parse(z.object({ phone: PhoneSchema, role: z.enum(['HEAD', 'ADMIN', 'APPROVER', 'OPERATOR']) }), req.body);
+  const body = parse(z.object({ phone: PhoneSchema, role: RoleSchema, permissions: PermissionListSchema.optional() }), req.body);
+  assertCanManageRole(ctx, id, body.role);
+  const permissions = validateCustomPermissions(body.role, body.permissions);
   const user = await prisma.user.findUnique({ where: { phone: body.phone } });
   if (!user) throw notFound('User with this phone number');
+  if (user.status !== 'ACTIVE') throw unprocessable('This account is not active', 'USER_INACTIVE');
+  const existing = await prisma.communityAdmin.findUnique({ where: { communityId_userId: { communityId: id, userId: user.id } } });
+  if (existing?.active) assertCanManageRole(ctx, id, existing.role);
   const role = await prisma.role.findUniqueOrThrow({ where: { key: 'COMMUNITY_ADMIN' } });
+  const jsonPermissions = permissions ? (permissions as Prisma.InputJsonValue) : Prisma.DbNull;
   const assignment = await prisma.$transaction(async (tx) => {
     await tx.userRole.upsert({ where: { userId_roleId: { userId: user.id, roleId: role.id } }, create: { userId: user.id, roleId: role.id }, update: {} });
     return tx.communityAdmin.upsert({
       where: { communityId_userId: { communityId: id, userId: user.id } },
-      create: { communityId: id, userId: user.id, role: body.role, assignedById: auth(req).userId },
-      update: { role: body.role, active: true, assignedById: auth(req).userId },
+      create: { communityId: id, userId: user.id, role: body.role, permissions: jsonPermissions, assignedById: ctx.userId },
+      update: { role: body.role, permissions: jsonPermissions, active: true, assignedById: ctx.userId },
+      select: { id: true, role: true, permissions: true, active: true, createdAt: true, user: { select: { id: true, name: true, phone: true } } },
     });
   });
-  await audit({ action: 'community.admin_assigned', entityType: 'CommunityAdmin', entityId: assignment.id, communityId: id, after: { userId: user.id, role: body.role } }, { ctx: req.auth, req });
-  await notify(user.id, { type: 'COMMUNITY_ROLE', title: 'Community role assigned', body: `You are now ${body.role} for this community.`, link: `/community/${id}` });
-  created(res, assignment);
+  await audit({ action: 'community.admin_assigned', entityType: 'CommunityAdmin', entityId: assignment.id, communityId: id, before: existing ? { role: existing.role, active: existing.active } : null, after: { userId: user.id, role: body.role, permissions } }, { ctx, req });
+  await notify(user.id, { type: 'COMMUNITY_ROLE', title: 'Union role assigned', body: `You are now ${body.role.replace('_', ' ').toLowerCase()} for this union.`, link: `/community/${id}` });
+  created(res, teamView(assignment));
+});
+
+/** Edit a delegate: change their role, or switch individual permissions on or off. */
+communityRoutes.patch('/:communityId/admins/:adminId', requireCommunity('community.admins.manage'), async (req, res) => {
+  const ctx = auth(req);
+  const id = communityId(req);
+  const body = parse(z.object({ role: RoleSchema.optional(), permissions: PermissionListSchema.optional() }), req.body);
+  const existing = await prisma.communityAdmin.findFirst({ where: { id: param(req, 'adminId'), communityId: id, active: true } });
+  if (!existing) throw notFound('Team member');
+  if (existing.userId === ctx.userId && !isSuperAdmin(ctx)) throw conflict('You cannot change your own role');
+  assertCanManageRole(ctx, id, existing.role);
+  const nextRole = body.role ?? existing.role;
+  assertCanManageRole(ctx, id, nextRole);
+  // Changing role without a permission list resets to the new role's defaults.
+  const permissions = body.permissions !== undefined ? validateCustomPermissions(nextRole, body.permissions) : body.role ? null : (existing.permissions as string[] | null);
+  if (nextRole === 'LOCAL_ADMIN' && permissions) throw unprocessable('Local admins always have every permission', 'INVALID_PERMISSIONS');
+  const updated = await prisma.communityAdmin.update({
+    where: { id: existing.id },
+    data: { role: nextRole, permissions: permissions ? (permissions as Prisma.InputJsonValue) : Prisma.DbNull },
+    select: { id: true, role: true, permissions: true, active: true, createdAt: true, user: { select: { id: true, name: true, phone: true } } },
+  });
+  await audit({ action: 'community.admin_updated', entityType: 'CommunityAdmin', entityId: existing.id, communityId: id, before: { role: existing.role, permissions: existing.permissions }, after: { role: nextRole, permissions } }, { ctx, req });
+  await notify(existing.userId, { type: 'COMMUNITY_ROLE', title: 'Your union permissions changed', body: `Role: ${nextRole.replace('_', ' ').toLowerCase()}`, link: `/community/${id}` });
+  ok(res, teamView(updated));
 });
 
 communityRoutes.delete('/:communityId/admins/:adminId', requireCommunity('community.admins.manage'), async (req, res) => {
+  const ctx = auth(req);
   const id = communityId(req);
   const existing = await prisma.communityAdmin.findFirst({ where: { id: param(req, 'adminId'), communityId: id } });
-  if (!existing) throw notFound('Administrator');
-  if (existing.userId === auth(req).userId) throw conflict('You cannot remove your own administrator role');
+  if (!existing) throw notFound('Team member');
+  if (existing.userId === ctx.userId) throw conflict('You cannot remove your own role');
+  assertCanManageRole(ctx, id, existing.role);
   await prisma.communityAdmin.update({ where: { id: existing.id }, data: { active: false } });
-  await audit({ action: 'community.admin_removed', entityType: 'CommunityAdmin', entityId: existing.id, communityId: id, before: { userId: existing.userId, role: existing.role } }, { ctx: req.auth, req });
+  await audit({ action: 'community.admin_removed', entityType: 'CommunityAdmin', entityId: existing.id, communityId: id, before: { userId: existing.userId, role: existing.role } }, { ctx, req });
   ok(res, { removed: true });
 });
 
@@ -296,6 +433,15 @@ communityRoutes.post('/:communityId/announcements', requireCommunity('community.
     await notify(members.map((m) => m.driver.userId), { type: 'ANNOUNCEMENT', title: body.title, body: body.body.slice(0, 300), link: '/driver/community' });
   }
   created(res, announcement);
+});
+
+communityRoutes.delete('/:communityId/announcements/:announcementId', requireCommunity('community.announcements.manage'), async (req, res) => {
+  const id = communityId(req);
+  const existing = await prisma.announcement.findFirst({ where: { id: param(req, 'announcementId'), communityId: id } });
+  if (!existing) throw notFound('Announcement');
+  await prisma.announcement.delete({ where: { id: existing.id } });
+  await audit({ action: 'announcement.deleted', entityType: 'Announcement', entityId: existing.id, communityId: id, before: { title: existing.title } }, { ctx: req.auth, req });
+  ok(res, { deleted: true });
 });
 
 // ─────────── Audit history ───────────

@@ -2,25 +2,32 @@ import type { CommunityRole } from '@prisma/client';
 import { prisma } from '../../db.js';
 import { forbidden, unauthorized } from '../../utils/errors.js';
 import {
-  COMMUNITY_ROLE_PERMISSIONS,
+  assignmentPermissions,
   SUPER_ADMIN_COMMUNITY_PERMISSIONS,
   type CommunityPermission,
   type GlobalPermission,
   type SystemRole,
 } from './permissions.js';
 
+export interface CommunityAssignment {
+  communityId: string;
+  role: CommunityRole;
+  /** Effective permissions in that community (a delegate's custom list, or the role's defaults). */
+  permissions: readonly CommunityPermission[];
+}
+
 export interface AuthContext {
   userId: string;
   name: string;
   roles: SystemRole[];
   permissions: Set<string>;
-  communityRoles: { communityId: string; role: CommunityRole }[];
+  communityRoles: CommunityAssignment[];
   driverId: string | null;
 }
 
 /**
- * Load the caller's roles from the database on every request, so suspensions and
- * role revocations take effect immediately rather than at token expiry.
+ * Load the caller's roles from the database on every request, so suspensions, role
+ * revocations and permission edits take effect immediately rather than at token expiry.
  */
 export async function loadAuthContext(userId: string): Promise<AuthContext> {
   const user = await prisma.user.findUnique({
@@ -32,7 +39,7 @@ export async function loadAuthContext(userId: string): Promise<AuthContext> {
       roles: { select: { role: { select: { key: true, permissions: { select: { permission: { select: { key: true } } } } } } } },
       communityAdminRoles: {
         where: { active: true, community: { status: { in: ['ACTIVE', 'PENDING', 'SUSPENDED'] } } },
-        select: { communityId: true, role: true },
+        select: { communityId: true, role: true, permissions: true },
       },
       driver: { select: { id: true } },
     },
@@ -48,7 +55,11 @@ export async function loadAuthContext(userId: string): Promise<AuthContext> {
     name: user.name,
     roles: user.roles.map((r) => r.role.key as SystemRole),
     permissions,
-    communityRoles: user.communityAdminRoles,
+    communityRoles: user.communityAdminRoles.map((r) => ({
+      communityId: r.communityId,
+      role: r.role,
+      permissions: assignmentPermissions(r.role, r.permissions),
+    })),
     driverId: user.driver?.id ?? null,
   };
 }
@@ -65,13 +76,21 @@ export function isSuperAdmin(ctx: AuthContext) {
   return hasRole(ctx, 'SUPER_ADMIN');
 }
 
+/** The caller's role in a community, if any (super admins have none unless assigned one). */
+export function communityRoleOf(ctx: AuthContext, communityId: string): CommunityRole | null {
+  if (!ctx.permissions.has('community.console')) return null;
+  return ctx.communityRoles.find((r) => r.communityId === communityId)?.role ?? null;
+}
+
+export function isLocalAdmin(ctx: AuthContext, communityId: string) {
+  return communityRoleOf(ctx, communityId) === 'LOCAL_ADMIN';
+}
+
 /** Community-scoped permission check. This is the core of community data isolation. */
 export function hasCommunityPermission(ctx: AuthContext, communityId: string, perm: CommunityPermission): boolean {
   if (isSuperAdmin(ctx) && SUPER_ADMIN_COMMUNITY_PERMISSIONS.includes(perm)) return true;
   if (!ctx.permissions.has('community.console')) return false;
-  return ctx.communityRoles.some(
-    (r) => r.communityId === communityId && COMMUNITY_ROLE_PERMISSIONS[r.role].includes(perm),
-  );
+  return ctx.communityRoles.some((r) => r.communityId === communityId && r.permissions.includes(perm));
 }
 
 export function assertCommunityPermission(ctx: AuthContext, communityId: string, perm: CommunityPermission) {
@@ -85,7 +104,7 @@ export function communityPermissionsFor(ctx: AuthContext, communityId: string): 
   if (isSuperAdmin(ctx)) SUPER_ADMIN_COMMUNITY_PERMISSIONS.forEach((p) => perms.add(p));
   if (ctx.permissions.has('community.console')) {
     for (const r of ctx.communityRoles) {
-      if (r.communityId === communityId) COMMUNITY_ROLE_PERMISSIONS[r.role].forEach((p) => perms.add(p));
+      if (r.communityId === communityId) r.permissions.forEach((p) => perms.add(p));
     }
   }
   return [...perms];
@@ -95,7 +114,5 @@ export function communityPermissionsFor(ctx: AuthContext, communityId: string): 
 export function communitiesWithPermission(ctx: AuthContext, perm: CommunityPermission): string[] | undefined {
   if (isSuperAdmin(ctx) && SUPER_ADMIN_COMMUNITY_PERMISSIONS.includes(perm)) return undefined;
   if (!ctx.permissions.has('community.console')) return [];
-  return ctx.communityRoles
-    .filter((r) => COMMUNITY_ROLE_PERMISSIONS[r.role].includes(perm))
-    .map((r) => r.communityId);
+  return ctx.communityRoles.filter((r) => r.permissions.includes(perm)).map((r) => r.communityId);
 }

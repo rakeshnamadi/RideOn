@@ -1,5 +1,5 @@
 import multer from 'multer';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../config/env.js';
 import { badRequest } from '../utils/errors.js';
@@ -11,6 +11,13 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 export const documentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 10 },
+});
+
+/** Union logos: one small image. */
+export const MAX_LOGO_BYTES = 1024 * 1024;
+export const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_LOGO_BYTES, files: 1, fields: 2 },
 });
 
 const SIGNATURES: { mime: string; bytes: number[] }[] = [
@@ -42,4 +49,9 @@ export async function readPrivateFile(storageKey: string): Promise<Buffer> {
 
 export function safeFilename(name: string) {
   return name.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'document';
+}
+
+export async function deletePrivateFile(storageKey: string | null | undefined) {
+  if (!storageKey || !/^[\w-]+\.bin$/.test(storageKey)) return;
+  await rm(path.join(uploadRoot(), storageKey), { force: true });
 }

@@ -7,17 +7,20 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { globalLimiter, requestId } from './middleware/security.js';
+import { activityLogger, activityRoutes } from './modules/activity/activity.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { bookingRoutes } from './modules/bookings/booking.routes.js';
 import { communityRoutes } from './modules/communities/community.routes.js';
 import { communityOpsRoutes } from './modules/communities/operations.routes.js';
 import { driverRoutes } from './modules/drivers/driver.routes.js';
+import { fareFeedbackRoutes } from './modules/fares/feedback.routes.js';
 import { fareRoutes } from './modules/fares/fare.routes.js';
 import { geoRoutes } from './modules/geo/geo.routes.js';
 import { notificationRoutes } from './modules/notifications/notification.routes.js';
 import { paymentRoutes } from './modules/payments/payment.routes.js';
 import { publicRoutes } from './modules/public/public.routes.js';
+import { communityReportRoutes } from './modules/reports/community-reports.routes.js';
 import { reportRoutes } from './modules/reports/report.routes.js';
 import { sharedTripRoutes } from './modules/shared-trips/shared-trip.routes.js';
 import { complaintRoutes, ratingRoutes, supportRoutes } from './modules/support/support.routes.js';
@@ -29,6 +32,7 @@ export function createApp() {
   app.set('trust proxy', env.TRUST_PROXY);
 
   app.use(requestId);
+  app.use(activityLogger);
   app.use(
     pinoHttp({
       logger,
@@ -67,9 +71,11 @@ export function createApp() {
   v1.use('/users', userRoutes);
   v1.use('/geo', geoRoutes);
   v1.use('/communities', communityRoutes);
+  v1.use('/communities/:communityId/reports', communityReportRoutes);
   v1.use('/communities/:communityId', communityOpsRoutes);
   v1.use('/drivers', driverRoutes);
   v1.use('/fares', fareRoutes);
+  v1.use('/fare-feedback', fareFeedbackRoutes);
   v1.use('/bookings', bookingRoutes);
   v1.use('/shared-trips', sharedTripRoutes);
   v1.use('/payments', paymentRoutes);
@@ -78,6 +84,7 @@ export function createApp() {
   v1.use('/support-tickets', supportRoutes);
   v1.use('/notifications', notificationRoutes);
   v1.use('/reports', reportRoutes);
+  v1.use('/admin/activity', activityRoutes);
   v1.use('/admin', adminRoutes);
   app.use('/api/v1', v1);
 

@@ -8,6 +8,7 @@ import { authLimiter, requireCsrfHeader } from '../../middleware/security.js';
 import { unauthorized } from '../../utils/errors.js';
 import { created, ok, parse } from '../../utils/http.js';
 import { communityPermissionsFor } from './auth-context.js';
+import { withLogoUrl } from '../communities/branding.js';
 import {
   authenticateCredentials,
   createPasswordReset,
@@ -77,7 +78,7 @@ async function profilePayload(userId: string, req: Request) {
       driver: { select: { id: true, verificationStatus: true, status: true } },
       communityAdminRoles: {
         where: { active: true },
-        select: { role: true, community: { select: { id: true, name: true, slug: true, status: true } } },
+        select: { role: true, community: { select: { id: true, name: true, slug: true, status: true, shortName: true, brandColor: true, logoUpdatedAt: true } } },
       },
     },
   });
@@ -87,7 +88,7 @@ async function profilePayload(userId: string, req: Request) {
     roles: ctx.roles,
     permissions: [...ctx.permissions],
     communities: user.communityAdminRoles.map((r) => ({
-      ...r.community,
+      ...withLogoUrl(r.community),
       role: r.role,
       permissions: communityPermissionsFor(ctx, r.community.id),
     })),
@@ -106,7 +107,7 @@ authRoutes.post('/register', authLimiter, async (req, res) => {
 
 authRoutes.post('/login', authLimiter, async (req, res) => {
   const { identifier, password } = parse(LoginSchema, req.body);
-  const user = await authenticateCredentials(normaliseIdentifier(identifier), password);
+  const user = await authenticateCredentials(normaliseIdentifier(identifier), password, req);
   const session = await startSession(user.id, req);
   setRefreshCookie(res, session.refreshToken, session.expiresAt);
   ok(res, { accessToken: session.accessToken, userId: user.id });

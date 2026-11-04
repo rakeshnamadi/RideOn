@@ -1,9 +1,11 @@
+import { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { auth, authenticate, requirePermission, requireRole } from '../../middleware/auth.js';
 import { conflict, notFound, unprocessable } from '../../utils/errors.js';
-import { IdParam, created, ok, pageMeta, pagination, parse } from '../../utils/http.js';
+import { IdParam, created, ok, pageMeta, pagination, param, parse } from '../../utils/http.js';
+import { SYSTEM_ROLES } from '../auth/permissions.js';
 import { audit } from '../audit/audit.service.js';
 import { revokeAllSessions } from '../auth/auth.service.js';
 import { PhoneSchema } from '../auth/auth.routes.js';
@@ -67,6 +69,16 @@ adminRoutes.patch('/cities/:id', requirePermission('platform.settings.manage'), 
   ok(res, city);
 });
 
+adminRoutes.delete('/cities/:id', requirePermission('platform.settings.manage'), async (req, res) => {
+  const { id } = parse(IdParam, req.params);
+  const city = await prisma.city.findUnique({ where: { id }, include: { _count: { select: { communities: true } } } });
+  if (!city) throw notFound('City');
+  if (city._count.communities) throw conflict('Unions are registered in this city. Disable the city instead.', 'IN_USE');
+  await prisma.city.delete({ where: { id } });
+  await audit({ action: 'city.deleted', entityType: 'City', entityId: id, before: { name: city.name, state: city.state } }, { ctx: req.auth, req });
+  ok(res, { deleted: true });
+});
+
 // ─────────── Communities ───────────
 
 adminRoutes.get('/communities', async (req, res) => {
@@ -109,7 +121,7 @@ adminRoutes.post('/communities', requirePermission('platform.communities.manage'
     const c = await tx.community.create({ data: { ...data, status: 'PENDING', policy: { create: {} } } });
     if (head) {
       await tx.userRole.upsert({ where: { userId_roleId: { userId: head.id, roleId: role.id } }, create: { userId: head.id, roleId: role.id }, update: {} });
-      await tx.communityAdmin.create({ data: { communityId: c.id, userId: head.id, role: 'HEAD', assignedById: auth(req).userId } });
+      await tx.communityAdmin.create({ data: { communityId: c.id, userId: head.id, role: 'LOCAL_ADMIN', assignedById: auth(req).userId } });
     }
     return c;
   });
@@ -134,6 +146,25 @@ adminRoutes.post('/communities/:id/status', requirePermission('platform.communit
   const admins = await prisma.communityAdmin.findMany({ where: { communityId: id, active: true }, select: { userId: true } });
   await notify(admins.map((a) => a.userId), { type: 'COMMUNITY_STATUS', title: `Community ${body.status.toLowerCase()}`, body: body.reason ?? `${c.name} is now ${body.status.toLowerCase()}.`, link: `/community/${id}` });
   ok(res, updated);
+});
+
+/** Delete a union that never operated (no bookings or revenue). Unions with history are deactivated instead. */
+adminRoutes.delete('/communities/:id', requirePermission('platform.communities.manage'), async (req, res) => {
+  const { id } = parse(IdParam, req.params);
+  const c = await prisma.community.findUnique({ where: { id }, include: { _count: { select: { bookings: true, feeRecords: true, fareHistory: true, complaints: true, statements: true } } } });
+  if (!c) throw notFound('Community');
+  // Fare history is append-only by design, and complaints/statements are records to keep.
+  const k = c._count;
+  if (k.bookings || k.feeRecords || k.fareHistory || k.complaints || k.statements) {
+    throw conflict('This union has bookings, fares, complaints or statements on record. Deactivate it instead.', 'HAS_HISTORY');
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.driverAvailability.updateMany({ where: { communityId: id }, data: { communityId: null, status: 'OFFLINE', standId: null, queuedAt: null } });
+    await tx.vehicle.deleteMany({ where: { communityId: id } });
+    await tx.community.delete({ where: { id } });
+  });
+  await audit({ action: 'community.deleted', entityType: 'Community', entityId: id, before: { name: c.name, slug: c.slug } }, { ctx: req.auth, req });
+  ok(res, { deleted: true });
 });
 
 /** Platform-controlled limits that a community cannot change itself. */
@@ -224,7 +255,7 @@ adminRoutes.get('/users', requirePermission('platform.users.manage'), async (req
     ...(q.search ? { OR: [{ name: { contains: q.search } }, { phone: { contains: q.search } }, { email: { contains: q.search } }] } : {}),
   };
   const [items, total] = await Promise.all([
-    prisma.user.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, phone: true, email: true, status: true, suspensionReason: true, createdAt: true, lastLoginAt: true, roles: { select: { role: { select: { key: true } } } } } }),
+    prisma.user.findMany({ where, skip, take, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, phone: true, email: true, status: true, suspensionReason: true, createdAt: true, lastLoginAt: true, roles: { select: { role: { select: { key: true } } } }, communityAdminRoles: { where: { active: true }, select: { id: true, role: true, community: { select: { id: true, name: true } } } } } }),
     prisma.user.count({ where }),
   ]);
   ok(res, items.map((u) => ({ ...u, roles: u.roles.map((r) => r.role.key) })), pageMeta(page, pageSize, total));
@@ -240,6 +271,84 @@ adminRoutes.post('/users/:id/status', requirePermission('platform.users.manage')
   if (body.status !== 'ACTIVE') await revokeAllSessions(id, `ACCOUNT_${body.status}`);
   await audit({ action: `user.${body.status.toLowerCase()}`, entityType: 'User', entityId: id, before: { status: u.status }, after: body }, { ctx: req.auth, req });
   ok(res, { status: body.status });
+});
+
+// ─────────── Role assignment (super admin: assign roles to any registered person) ───────────
+
+adminRoutes.get('/users/:id', requirePermission('platform.users.manage'), async (req, res) => {
+  const { id } = parse(IdParam, req.params);
+  const u = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true, name: true, phone: true, email: true, status: true, createdAt: true, lastLoginAt: true,
+      roles: { select: { role: { select: { key: true } } } },
+      driver: { select: { id: true, verificationStatus: true, status: true } },
+      communityAdminRoles: { where: { active: true }, select: { id: true, role: true, permissions: true, community: { select: { id: true, name: true } } } },
+    },
+  });
+  if (!u) throw notFound('User');
+  ok(res, { ...u, roles: u.roles.map((r) => r.role.key) });
+});
+
+/** Replace a person's platform roles. A super admin cannot remove their own super-admin role. */
+adminRoutes.put('/users/:id/roles', requirePermission('platform.users.manage'), async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(IdParam, req.params);
+  const body = parse(z.object({ roles: z.array(z.enum(SYSTEM_ROLES)).min(1, 'Keep at least one role').max(SYSTEM_ROLES.length) }), req.body);
+  const user = await prisma.user.findUnique({ where: { id }, include: { roles: { include: { role: true } }, driver: true } });
+  if (!user) throw notFound('User');
+  const before = user.roles.map((r) => r.role.key);
+  const next = [...new Set(body.roles)];
+  if (id === ctx.userId && before.includes('SUPER_ADMIN') && !next.includes('SUPER_ADMIN')) throw conflict('You cannot remove your own super-admin role');
+  if (before.includes('SUPER_ADMIN') && !next.includes('SUPER_ADMIN')) {
+    const supers = await prisma.userRole.count({ where: { role: { key: 'SUPER_ADMIN' }, user: { status: 'ACTIVE' } } });
+    if (supers <= 1) throw conflict('The platform must keep at least one super admin');
+  }
+  if (next.includes('DRIVER') && !user.driver) {
+    throw unprocessable('A person becomes a driver by registering their licence; give them the driver role from their own driver registration', 'DRIVER_PROFILE_REQUIRED');
+  }
+  const roles = await prisma.role.findMany({ where: { key: { in: next } } });
+  await prisma.$transaction([
+    prisma.userRole.deleteMany({ where: { userId: id, role: { key: { notIn: next } } } }),
+    ...roles.map((r) => prisma.userRole.upsert({ where: { userId_roleId: { userId: id, roleId: r.id } }, create: { userId: id, roleId: r.id }, update: {} })),
+  ]);
+  await audit({ action: 'user.roles_changed', entityType: 'User', entityId: id, before: { roles: before }, after: { roles: next } }, { ctx, req });
+  await notify(id, { type: 'ROLES_CHANGED', title: 'Your RideOn roles changed', body: next.map((r) => r.replace('_', ' ').toLowerCase()).join(', '), link: '/' });
+  ok(res, { roles: next });
+});
+
+/** Give a person a role in any union (including local admin). */
+adminRoutes.post('/users/:id/community-roles', requirePermission('platform.communities.manage'), async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(IdParam, req.params);
+  const body = parse(z.object({ communityId: z.string().max(40), role: z.enum(['LOCAL_ADMIN', 'REPORTER', 'APPROVER', 'OPERATOR']) }), req.body);
+  const [user, community, role] = await Promise.all([
+    prisma.user.findUnique({ where: { id } }),
+    prisma.community.findUnique({ where: { id: body.communityId } }),
+    prisma.role.findUniqueOrThrow({ where: { key: 'COMMUNITY_ADMIN' } }),
+  ]);
+  if (!user) throw notFound('User');
+  if (!community) throw notFound('Community');
+  const assignment = await prisma.$transaction(async (tx) => {
+    await tx.userRole.upsert({ where: { userId_roleId: { userId: id, roleId: role.id } }, create: { userId: id, roleId: role.id }, update: {} });
+    return tx.communityAdmin.upsert({
+      where: { communityId_userId: { communityId: body.communityId, userId: id } },
+      create: { communityId: body.communityId, userId: id, role: body.role, assignedById: ctx.userId },
+      update: { role: body.role, active: true, permissions: Prisma.DbNull, assignedById: ctx.userId },
+    });
+  });
+  await audit({ action: 'community.admin_assigned', entityType: 'CommunityAdmin', entityId: assignment.id, communityId: body.communityId, after: { userId: id, role: body.role, by: 'platform' } }, { ctx, req });
+  await notify(id, { type: 'COMMUNITY_ROLE', title: `You are now ${body.role.replace('_', ' ').toLowerCase()}`, body: community.name, link: `/community/${community.id}` });
+  created(res, assignment);
+});
+
+adminRoutes.delete('/users/:id/community-roles/:assignmentId', requirePermission('platform.communities.manage'), async (req, res) => {
+  const { id } = parse(IdParam, req.params);
+  const assignment = await prisma.communityAdmin.findFirst({ where: { id: param(req, 'assignmentId'), userId: id } });
+  if (!assignment) throw notFound('Role assignment');
+  await prisma.communityAdmin.update({ where: { id: assignment.id }, data: { active: false } });
+  await audit({ action: 'community.admin_removed', entityType: 'CommunityAdmin', entityId: assignment.id, communityId: assignment.communityId, before: { userId: id, role: assignment.role }, after: { by: 'platform' } }, { ctx: req.auth, req });
+  ok(res, { removed: true });
 });
 
 // ─────────── Bookings (platform-wide) ───────────

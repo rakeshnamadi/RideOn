@@ -9,8 +9,8 @@ describe('community data isolation and role boundaries', () => {
 
   beforeAll(async () => {
     await resetDatabase();
-    km = (await communityBySlug('koramangala-autos')).id;
-    inId = (await communityBySlug('indiranagar-autos')).id;
+    km = (await communityBySlug('ainavilli-autos')).id;
+    inId = (await communityBySlug('amalapuram-autos')).id;
     [inHead, kmHead] = await Promise.all([login(PHONES.inHead), login(PHONES.kmHead)]);
   });
 

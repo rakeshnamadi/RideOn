@@ -39,7 +39,7 @@ export const ROLE_PERMISSIONS: Record<SystemRole, GlobalPermission[]> = {
   PASSENGER: ['booking.create'],
 };
 
-/** Permissions scoped to one community, granted through community_admins.role. */
+/** Permissions scoped to one community (union), granted through community_admins. */
 export const COMMUNITY_PERMISSIONS = [
   'community.view',
   'community.profile.edit',
@@ -52,36 +52,60 @@ export const COMMUNITY_PERMISSIONS = [
   'community.routes.manage',
   'community.fares.propose',
   'community.fares.approve',
+  'community.feedback.manage',
   'community.queue.manage',
   'community.bookings.view',
   'community.complaints.manage',
   'community.announcements.manage',
+  'community.reports.manage',
   'community.statements.view',
   'community.audit.view',
 ] as const;
 export type CommunityPermission = (typeof COMMUNITY_PERMISSIONS)[number];
 
+/** What each permission lets someone do — shown when a local admin customises a delegate. */
+export const COMMUNITY_PERMISSION_LABELS: Record<CommunityPermission, string> = {
+  'community.view': 'Open the union console',
+  'community.profile.edit': 'Edit union profile, logo and master data',
+  'community.policy.edit': 'Change operational settings',
+  'community.admins.manage': 'Assign roles and permissions to the team',
+  'community.members.manage': 'Approve, reject or suspend drivers',
+  'community.drivers.manage': 'Review driver documents',
+  'community.vehicles.manage': 'Approve vehicles and set seat capacity',
+  'community.areas.manage': 'Set service-area geolocation',
+  'community.routes.manage': 'Add or delete pickup/drop points, routes and schedules',
+  'community.fares.propose': 'Propose fares and rule changes',
+  'community.fares.approve': 'Approve or reject fare and rule proposals',
+  'community.feedback.manage': 'Read and answer drivers’ fare feedback',
+  'community.queue.manage': 'Manage the live stand queue and departures',
+  'community.bookings.view': 'View bookings and statistics',
+  'community.complaints.manage': 'Handle complaints and appeals',
+  'community.announcements.manage': 'Publish announcements',
+  'community.reports.manage': 'Prepare, view and edit reports',
+  'community.statements.view': 'View revenue statements and export data',
+  'community.audit.view': 'View the decision history',
+};
+
+/**
+ * Union role hierarchy. LOCAL_ADMIN runs the union for its dedicated area and delegates
+ * every role below it; the platform super admin assigns local admins.
+ */
 export const COMMUNITY_ROLE_PERMISSIONS: Record<CommunityRole, readonly CommunityPermission[]> = {
-  HEAD: COMMUNITY_PERMISSIONS,
-  ADMIN: [
+  LOCAL_ADMIN: COMMUNITY_PERMISSIONS,
+  REPORTER: [
     'community.view',
-    'community.profile.edit',
+    'community.reports.manage',
+    'community.statements.view',
+    'community.bookings.view',
     'community.members.manage',
     'community.drivers.manage',
-    'community.vehicles.manage',
     'community.areas.manage',
-    'community.routes.manage',
-    'community.fares.propose',
-    'community.queue.manage',
-    'community.bookings.view',
-    'community.complaints.manage',
-    'community.announcements.manage',
-    'community.statements.view',
     'community.audit.view',
   ],
   APPROVER: [
     'community.view',
     'community.fares.approve',
+    'community.feedback.manage',
     'community.bookings.view',
     'community.statements.view',
     'community.audit.view',
@@ -94,20 +118,25 @@ export const COMMUNITY_ROLE_PERMISSIONS: Record<CommunityRole, readonly Communit
   ],
 };
 
-/**
- * Community permissions a super admin holds on any community for oversight.
- * Deliberately excludes governance actions (proposing/approving fares, policy
- * changes) — those belong to the community; the platform reviews via its own flow.
- */
-export const SUPER_ADMIN_COMMUNITY_PERMISSIONS: readonly CommunityPermission[] = [
-  'community.view',
-  'community.profile.edit',
-  'community.admins.manage',
-  'community.members.manage',
-  'community.drivers.manage',
-  'community.vehicles.manage',
-  'community.bookings.view',
-  'community.complaints.manage',
-  'community.statements.view',
-  'community.audit.view',
-];
+/** Roles a local admin may give to people under them (local admins are assigned by the platform). */
+export const DELEGABLE_ROLES = ['REPORTER', 'APPROVER', 'OPERATOR'] as const satisfies readonly CommunityRole[];
+
+/** Permissions that stay with local admins: a delegate can never be granted these. */
+export const LOCAL_ADMIN_ONLY_PERMISSIONS: readonly CommunityPermission[] = ['community.admins.manage', 'community.policy.edit'];
+
+/** Permissions a local admin may switch on or off for an individual delegate. */
+export const DELEGABLE_PERMISSIONS: readonly CommunityPermission[] = COMMUNITY_PERMISSIONS.filter(
+  (p) => !LOCAL_ADMIN_ONLY_PERMISSIONS.includes(p),
+);
+
+/** Effective permissions of one assignment: a delegate's custom list, or the role's defaults. */
+export function assignmentPermissions(role: CommunityRole, custom: unknown): readonly CommunityPermission[] {
+  if (role === 'LOCAL_ADMIN' || !Array.isArray(custom)) return COMMUNITY_ROLE_PERMISSIONS[role];
+  const allowed = new Set<string>(DELEGABLE_PERMISSIONS);
+  const list = custom.filter((p): p is CommunityPermission => typeof p === 'string' && allowed.has(p));
+  // Everyone with a role can at least open the console.
+  return list.includes('community.view') ? list : ['community.view', ...list];
+}
+
+/** The platform super admin controls everything, in every union. */
+export const SUPER_ADMIN_COMMUNITY_PERMISSIONS: readonly CommunityPermission[] = COMMUNITY_PERMISSIONS;

@@ -13,6 +13,7 @@ export const PHONES = {
   kmAdmin: '9000000003',
   kmApprover: '9000000004',
   inHead: '9000000005',
+  reporter: '9000000006',
   driver1: '9000000010',
   driver2: '9000000011',
   driver3: '9000000012',
@@ -47,14 +48,15 @@ export async function communityBySlug(slug: string) {
   return prisma.community.findUniqueOrThrow({ where: { slug } });
 }
 
-export const SONY_WORLD = { lat: 12.937, lng: 77.6267 };
-export const SILK_BOARD = { lat: 12.9177, lng: 77.6233 };
+/** Ainavilli Centre Stand and Kondukuduru — inside the Ainavilli union's service area (pincode 533211). */
+export const PICKUP_POINT = { lat: 16.6638, lng: 82.031 };
+export const DROP_POINT = { lat: 16.66, lng: 82.0777 };
 
 let counter = 0;
 export const idem = (prefix = 'test') => `${prefix}-${Date.now()}-${++counter}`;
 
-/** Put a seeded driver online at a location inside the Koramangala service area. */
-export async function goOnline(token: string, communityId: string, at = SONY_WORLD) {
+/** Put a seeded driver online at a location inside the Ainavilli service area. */
+export async function goOnline(token: string, communityId: string, at = PICKUP_POINT) {
   const res = await api.post('/api/v1/drivers/me/availability').set(bearer(token)).send({ status: 'ONLINE', communityId, ...at });
   if (res.status !== 200) throw new Error(`goOnline failed: ${JSON.stringify(res.body)}`);
 }

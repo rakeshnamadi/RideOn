@@ -3,8 +3,9 @@
  *
  * Creates demo cities, communities, fares, routes and one account per role. All demo
  * accounts share the password below; it is documented in README.md and must never be
- * used outside local development. Locations are real Bengaluru landmarks used as
- * sample data; no live driver positions are created.
+ * used outside local development. Locations are real places around pincode 533211
+ * (Ainavilli mandal, Konaseema, Andhra Pradesh) used as sample data; union details are
+ * illustrative and no live driver positions are created.
  */
 import { PrismaClient, type CommunityRole } from '@prisma/client';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -133,84 +134,102 @@ export async function seedDatabase(client: PrismaClient) {
     ],
   });
 
-  const blr = await prisma.city.create({ data: { name: 'Bengaluru', state: 'Karnataka', centerLat: 12.9716, centerLng: 77.5946 } });
-  await prisma.city.create({ data: { name: 'Mysuru', state: 'Karnataka', centerLat: 12.2958, centerLng: 76.6394 } });
+  // Primary focus: pincode 533211 — Ainavilli mandal, Dr. B.R. Ambedkar Konaseema district, Andhra Pradesh.
+  // Coordinates are real places (from OpenStreetMap); union details are sample data.
+  const konaseema = await prisma.city.create({ data: { name: 'Konaseema', state: 'Andhra Pradesh', centerLat: 16.6338, centerLng: 82.02 } });
+  await prisma.city.create({ data: { name: 'Rajamahendravaram', state: 'Andhra Pradesh', centerLat: 17.0005, centerLng: 81.804 } });
 
   // ── People ──
-  const superAdmin = await user('Asha Platform', '+919000000001', ['SUPER_ADMIN', 'PASSENGER'], pw, 'admin@rideon.dev');
-  const kmHead = await user('Ravi Kumar', '+919000000002', ['COMMUNITY_ADMIN'], pw);
-  const kmAdmin = await user('Meena Shetty', '+919000000003', ['COMMUNITY_ADMIN'], pw);
-  const kmApprover = await user('Joseph D\'Souza', '+919000000004', ['COMMUNITY_ADMIN'], pw);
-  const inHead = await user('Farooq Ahmed', '+919000000005', ['COMMUNITY_ADMIN'], pw);
-  const passenger = await user('Priya Nair', '+919000000020', ['PASSENGER'], pw, 'priya@example.com');
-  await user('Arjun Rao', '+919000000021', ['PASSENGER'], pw);
+  const superAdmin = await user('Asha Rao', '+919000000001', ['SUPER_ADMIN', 'PASSENGER'], pw, 'admin@rideon.dev');
+  const avLocalAdmin = await user('Satyanarayana Murthy', '+919000000002', ['COMMUNITY_ADMIN'], pw);
+  const avLocalAdmin2 = await user('Lakshmi Prasanna', '+919000000003', ['COMMUNITY_ADMIN'], pw);
+  const avApprover = await user('Venkata Rao', '+919000000004', ['COMMUNITY_ADMIN'], pw);
+  const amLocalAdmin = await user('Srinivas Reddy', '+919000000005', ['COMMUNITY_ADMIN'], pw);
+  const avReporter = await user('Padmavathi', '+919000000006', ['COMMUNITY_ADMIN'], pw);
+  const passenger = await user('Sravani Kotipalli', '+919000000020', ['PASSENGER'], pw, 'sravani@example.com');
+  await user('Teja Varma', '+919000000021', ['PASSENGER'], pw);
 
-  // ── Communities ──
-  const koramangala = await prisma.community.create({
+  // ── Unions ──
+  const ainavilli = await prisma.community.create({
     data: {
-      cityId: blr.id,
-      name: 'Koramangala Auto Drivers Association',
-      slug: 'koramangala-autos',
-      registrationNumber: 'KA-SOC-2019-0412 (sample)',
-      description: 'Community-run autos serving Koramangala, Madiwala and Silk Board.',
+      cityId: konaseema.id,
+      name: 'Ainavilli Auto Drivers Union',
+      slug: 'ainavilli-autos',
+      shortName: 'AADU',
+      tagline: 'Ainavilli autos, run by Ainavilli drivers',
+      registrationNumber: 'AP-KSM-AU-0211 (sample)',
+      description: 'Community-run autos serving Ainavilli, Muktheswaram, Veeravallipalem, Sanapalli Lanka and Kondukuduru.',
+      address: 'Ainavilli Centre, Ainavilli Mandal, Dr. B.R. Ambedkar Konaseema District, Andhra Pradesh',
+      pincode: '533211',
+      foundedYear: 2016,
+      brandColor: '#0F4D3A',
       contactPhone: '+918000000100',
-      centerLat: 12.9352,
-      centerLng: 77.6245,
+      centerLat: 16.6638,
+      centerLng: 82.031,
       status: 'ACTIVE',
       policy: { create: { fareApprovalMode: 'SINGLE_APPROVER', requiredApprovals: 1, communityFeeBps: 200, maxFareIncreasePercent: 20 } },
       serviceAreas: {
         create: {
-          name: 'Koramangala & Madiwala',
-          polygon: [[12.9475, 77.6050], [12.9475, 77.6420], [12.9100, 77.6420], [12.9100, 77.6050]],
+          name: 'Ainavilli mandal (533211)',
+          polygon: [[16.705, 81.975], [16.705, 82.095], [16.62, 82.095], [16.62, 81.975]],
         },
       },
     },
   });
-  const indiranagar = await prisma.community.create({
+  const amalapuram = await prisma.community.create({
     data: {
-      cityId: blr.id,
-      name: 'Indiranagar Auto Union',
-      slug: 'indiranagar-autos',
-      description: 'Autos around Indiranagar, Domlur and HAL.',
-      centerLat: 12.9719,
-      centerLng: 77.6412,
+      cityId: konaseema.id,
+      name: 'Amalapuram Town Auto Union',
+      slug: 'amalapuram-autos',
+      shortName: 'ATAU',
+      tagline: 'Autos around Amalapuram town',
+      description: 'Autos around Amalapuram bus station, town centre and Vilasavilli.',
+      address: 'APSRTC Bus Station, Amalapuram',
+      pincode: '533201',
+      brandColor: '#1B4F8A',
+      centerLat: 16.5798,
+      centerLng: 81.9978,
       status: 'ACTIVE',
       policy: { create: { fareApprovalMode: 'MULTI_APPROVER', requiredApprovals: 2, communityFeeBps: 100 } },
       serviceAreas: {
-        create: { name: 'Indiranagar & Domlur', polygon: [[12.9900, 77.6250], [12.9900, 77.6600], [12.9550, 77.6600], [12.9550, 77.6250]] },
+        create: { name: 'Amalapuram town', polygon: [[16.605, 81.97], [16.605, 82.075], [16.555, 82.075], [16.555, 81.97]] },
       },
     },
   });
   await prisma.community.create({
-    data: { cityId: blr.id, name: 'Jayanagar Auto Collective', slug: 'jayanagar-autos', description: 'Pending onboarding.', centerLat: 12.925, centerLng: 77.5838, status: 'PENDING', policy: { create: {} } },
+    data: { cityId: konaseema.id, name: 'Kothapeta Auto Union', slug: 'kothapeta-autos', pincode: '533223', description: 'Pending onboarding.', centerLat: 16.7168, centerLng: 81.8966, status: 'PENDING', policy: { create: {} } },
   });
 
   const admin = (communityId: string, userId: string, role: CommunityRole) =>
     prisma.communityAdmin.create({ data: { communityId, userId, role, assignedById: superAdmin.id } });
-  await admin(koramangala.id, kmHead.id, 'HEAD');
-  await admin(koramangala.id, kmAdmin.id, 'ADMIN');
-  await admin(koramangala.id, kmApprover.id, 'APPROVER');
-  await admin(indiranagar.id, inHead.id, 'HEAD');
+  await admin(ainavilli.id, avLocalAdmin.id, 'LOCAL_ADMIN');
+  await admin(ainavilli.id, avLocalAdmin2.id, 'LOCAL_ADMIN');
+  await admin(ainavilli.id, avApprover.id, 'APPROVER');
+  await admin(ainavilli.id, avReporter.id, 'REPORTER');
+  await admin(amalapuram.id, amLocalAdmin.id, 'LOCAL_ADMIN');
 
   // ── Places ──
   const pp = (communityId: string, name: string, lat: number, lng: number, isStand = false) =>
     prisma.pickupPoint.create({ data: { communityId, name, lat, lng, isStand } });
-  const sonyWorld = await pp(koramangala.id, 'Sony World Junction', 12.9370, 77.6267, true);
-  const forum = await pp(koramangala.id, 'Forum Mall Stand', 12.9346, 77.6112, true);
-  const bda = await pp(koramangala.id, 'BDA Complex', 12.9312, 77.6214);
-  const madiwala = await pp(koramangala.id, 'Madiwala Market', 12.9226, 77.6174);
-  const silkBoard = await pp(koramangala.id, 'Silk Board Junction', 12.9177, 77.6233, true);
-  const inMetro = await pp(indiranagar.id, 'Indiranagar Metro Stand', 12.9784, 77.6386, true);
-  const domlur = await pp(indiranagar.id, 'Domlur Flyover', 12.9610, 77.6387);
-  const hal = await pp(indiranagar.id, 'HAL 2nd Stage', 12.9700, 77.6480);
+  const centre = await pp(ainavilli.id, 'Ainavilli Centre Stand', 16.6638, 82.031, true);
+  const muktheswaram = await pp(ainavilli.id, 'Muktheswaram Stand', 16.6601, 82.0201, true);
+  const veeravallipalem = await pp(ainavilli.id, 'Veeravallipalem', 16.6881, 82.0009);
+  const sanapalliLanka = await pp(ainavilli.id, 'Sanapalli Lanka', 16.6571, 82.0521);
+  const kondukuduru = await pp(ainavilli.id, 'Kondukuduru', 16.66, 82.0777, true);
+  await pp(ainavilli.id, 'Nedunuru', 16.6406, 81.985);
+  await pp(ainavilli.id, 'Pothukurru', 16.6333, 82.0697);
+  await pp(ainavilli.id, 'Siripalli', 16.6296, 82.0462);
+  const busStation = await pp(amalapuram.id, 'APSRTC Bus Station Stand', 16.5798, 81.9978, true);
+  const townCentre = await pp(amalapuram.id, 'Amalapuram Centre', 16.5777, 82.0033);
+  const vilasavilli = await pp(amalapuram.id, 'Vilasavilli', 16.5803, 82.0567);
 
   // ── Shared routes ──
-  const km1 = await prisma.sharedRoute.create({
+  const av1 = await prisma.sharedRoute.create({
     data: {
-      communityId: koramangala.id,
-      code: 'KM-1',
-      name: 'Sony World → Silk Board',
-      description: 'Scheduled shared auto via Forum, BDA Complex and Madiwala.',
+      communityId: ainavilli.id,
+      code: 'AV-1',
+      name: 'Veeravallipalem → Kondukuduru',
+      description: 'Scheduled shared auto via Muktheswaram, Ainavilli Centre and Sanapalli Lanka.',
       status: 'ACTIVE',
       maxSeats: 3,
       bookingCutoffMinutes: 5,
@@ -218,78 +237,91 @@ export async function seedDatabase(client: PrismaClient) {
       boardingRules: 'Show your 4-digit boarding PIN to the driver. The auto waits up to 2 minutes per stop.',
       stops: {
         create: [
-          { pickupPointId: sonyWorld.id, sequence: 1, offsetMinutes: 0 },
-          { pickupPointId: forum.id, sequence: 2, offsetMinutes: 6 },
-          { pickupPointId: bda.id, sequence: 3, offsetMinutes: 11 },
-          { pickupPointId: madiwala.id, sequence: 4, offsetMinutes: 17 },
-          { pickupPointId: silkBoard.id, sequence: 5, offsetMinutes: 24 },
+          { pickupPointId: veeravallipalem.id, sequence: 1, offsetMinutes: 0 },
+          { pickupPointId: muktheswaram.id, sequence: 2, offsetMinutes: 6 },
+          { pickupPointId: centre.id, sequence: 3, offsetMinutes: 10 },
+          { pickupPointId: sanapalliLanka.id, sequence: 4, offsetMinutes: 15 },
+          { pickupPointId: kondukuduru.id, sequence: 5, offsetMinutes: 22 },
         ],
       },
     },
   });
-  const in1 = await prisma.sharedRoute.create({
+  const am1 = await prisma.sharedRoute.create({
     data: {
-      communityId: indiranagar.id,
-      code: 'IN-1',
-      name: 'Metro → HAL via Domlur',
+      communityId: amalapuram.id,
+      code: 'AM-1',
+      name: 'Bus Station → Vilasavilli',
       status: 'ACTIVE',
       maxSeats: 3,
       stops: {
         create: [
-          { pickupPointId: inMetro.id, sequence: 1, offsetMinutes: 0 },
-          { pickupPointId: domlur.id, sequence: 2, offsetMinutes: 8 },
-          { pickupPointId: hal.id, sequence: 3, offsetMinutes: 15 },
+          { pickupPointId: busStation.id, sequence: 1, offsetMinutes: 0 },
+          { pickupPointId: townCentre.id, sequence: 2, offsetMinutes: 6 },
+          { pickupPointId: vilasavilli.id, sequence: 3, offsetMinutes: 14 },
         ],
       },
     },
   });
   const times: string[] = [];
   for (let h = 7; h <= 21; h++) for (const m of ['00', '30']) times.push(`${String(h).padStart(2, '0')}:${m}`);
-  await prisma.routeSchedule.createMany({ data: times.map((departureTime) => ({ routeId: km1.id, departureTime, seatCapacity: 3, validFrom: days(-1) })) });
-  await prisma.routeSchedule.createMany({ data: ['08:00', '09:00', '13:00', '18:00', '19:00'].map((departureTime) => ({ routeId: in1.id, departureTime, seatCapacity: 3, validFrom: days(-1) })) });
+  await prisma.routeSchedule.createMany({ data: times.map((departureTime) => ({ routeId: av1.id, departureTime, seatCapacity: 3, validFrom: days(-1) })) });
+  await prisma.routeSchedule.createMany({ data: ['08:00', '09:00', '13:00', '18:00', '19:00'].map((departureTime) => ({ routeId: am1.id, departureTime, seatCapacity: 3, validFrom: days(-1) })) });
 
-  // ── Approved fares (as if adopted through governance) ──
+  // ── Approved fares (as if adopted through governance; sample values) ──
   const regularFare = {
     baseFarePaise: 3000, baseDistanceMeters: 2000, perKmPaise: 1500, minimumFarePaise: 3000,
     waitingPerMinutePaise: 50, freeWaitingMinutes: 5, nightSurchargeBps: 5000, nightStartHour: 22, nightEndHour: 5,
   };
-  const kmRegular = await prisma.fareRule.create({ data: { communityId: koramangala.id, serviceType: 'REGULAR', version: 1, effectiveFrom: days(-30), ...regularFare } });
-  await prisma.fareRule.create({ data: { communityId: indiranagar.id, serviceType: 'REGULAR', version: 1, effectiveFrom: days(-30), ...regularFare, baseFarePaise: 3500 } });
-  await prisma.fareRule.create({ data: { communityId: koramangala.id, serviceType: 'SHARED', sharedRouteId: km1.id, version: 1, effectiveFrom: days(-30), perSeatPaise: 2000, perStopPaise: 500, minimumFarePaise: 1500 } });
-  await prisma.fareRule.create({ data: { communityId: indiranagar.id, serviceType: 'SHARED', sharedRouteId: in1.id, version: 1, effectiveFrom: days(-30), perSeatPaise: 2500, perStopPaise: 500 } });
-  for (const c of [koramangala, indiranagar]) {
+  const avRegular = await prisma.fareRule.create({ data: { communityId: ainavilli.id, serviceType: 'REGULAR', version: 1, effectiveFrom: days(-30), ...regularFare } });
+  await prisma.fareRule.create({ data: { communityId: amalapuram.id, serviceType: 'REGULAR', version: 1, effectiveFrom: days(-30), ...regularFare, baseFarePaise: 3500 } });
+  await prisma.fareRule.create({ data: { communityId: ainavilli.id, serviceType: 'SHARED', sharedRouteId: av1.id, version: 1, effectiveFrom: days(-30), perSeatPaise: 2000, perStopPaise: 500, minimumFarePaise: 1500 } });
+  await prisma.fareRule.create({ data: { communityId: amalapuram.id, serviceType: 'SHARED', sharedRouteId: am1.id, version: 1, effectiveFrom: days(-30), perSeatPaise: 2500, perStopPaise: 500 } });
+  for (const c of [ainavilli, amalapuram]) {
     await prisma.fareHistory.create({
       data: { communityId: c.id, serviceType: 'REGULAR', fareRuleId: (await prisma.fareRule.findFirstOrThrow({ where: { communityId: c.id, serviceType: 'REGULAR' } })).id, summary: { note: 'Initial fare table (seed data)' }, effectiveFrom: days(-30) },
     });
   }
 
-  // ── Drivers ──
-  const d1 = await driver('Suresh Gowda', '+919000000010', pw, { licenseNumber: 'KA0120190012345', communityId: koramangala.id, registration: 'KA01AB1234', verified: true, membership: 'APPROVED' });
-  await driver('Manjunath B', '+919000000011', pw, { licenseNumber: 'KA0520180067890', communityId: koramangala.id, registration: 'KA05CD5678', verified: true, membership: 'APPROVED' });
-  await driver('Lakshmi Devi', '+919000000012', pw, { licenseNumber: 'KA0320210054321', communityId: koramangala.id, registration: 'KA03EF9012', verified: true, membership: 'APPROVED' });
-  await driver('Kiran Naik', '+919000000013', pw, { licenseNumber: 'KA5120220011111', communityId: koramangala.id, registration: 'KA51GH3456', verified: false, membership: 'APPLIED' });
-  await driver('Imran Pasha', '+919000000014', pw, { licenseNumber: 'KA0420200022222', communityId: indiranagar.id, registration: 'KA04JK7890', verified: true, membership: 'APPROVED' });
+  // ── Drivers (AP registration numbers; sample) ──
+  const d1 = await driver('Suresh Babu', '+919000000010', pw, { licenseNumber: 'AP0520190012345', communityId: ainavilli.id, registration: 'AP05TA1234', verified: true, membership: 'APPROVED' });
+  const d2 = await driver('Nagaraju Pinnamaraju', '+919000000011', pw, { licenseNumber: 'AP0520180067890', communityId: ainavilli.id, registration: 'AP05TB5678', verified: true, membership: 'APPROVED' });
+  await driver('Durga Prasad', '+919000000012', pw, { licenseNumber: 'AP0520210054321', communityId: ainavilli.id, registration: 'AP05TC9012', verified: true, membership: 'APPROVED' });
+  await driver('Kiran Kumar', '+919000000013', pw, { licenseNumber: 'AP0520220011111', communityId: ainavilli.id, registration: 'AP05TD3456', verified: false, membership: 'APPLIED' });
+  await driver('Ramesh Gollapalli', '+919000000014', pw, { licenseNumber: 'AP0520200022222', communityId: amalapuram.id, registration: 'AP05TE7890', verified: true, membership: 'APPROVED' });
 
   await prisma.announcement.create({
-    data: { communityId: koramangala.id, title: 'Welcome to RideOn', body: 'Koramangala autos are now bookable on RideOn. Fares follow the community-approved table.', publishedById: kmHead.id },
+    data: { communityId: ainavilli.id, title: 'Welcome to RideOn', body: 'Ainavilli autos are now bookable on RideOn. Fares follow the union-approved table.', publishedById: avLocalAdmin.id },
   });
 
-  // ── Historical completed trips (sample data) so dashboards and statements have content ──
-  const rule = kmRegular;
+  // One example of driver fare feedback so the union's feedback screen has content.
+  await prisma.fareFeedback.create({
+    data: {
+      communityId: ainavilli.id,
+      driverId: d2.driver.id,
+      serviceType: 'REGULAR',
+      fareRuleId: avRegular.id,
+      sentiment: 'TOO_LOW',
+      suggestedPerKmPaise: 1700,
+      comment: 'Sample feedback: CNG prices went up; the per-km rate on the Kondukuduru side does not cover the empty return trip.',
+    },
+  });
+
+  // ── Historical completed trips (sample data) so dashboards, reports and statements have content ──
+  const rule = avRegular;
   for (let i = 0; i < 12; i++) {
     const created = new Date(Date.now() - (i + 1) * 20 * 3_600_000);
     const distance = 2500 + i * 650;
     const fare = calculateRegularFare(rule, { distanceMeters: distance, at: created });
     const split = calculateFeeSplit(fare.totalPaise, { platformFeeBps: 500, platformFlatFeePaise: 0, platformMaxFeePaise: 2000, communityFeeBps: 200 });
     const quote = await prisma.fareQuote.create({
-      data: { passengerId: passenger.id, communityId: koramangala.id, serviceType: 'REGULAR', fareRuleId: rule.id, pickupLat: sonyWorld.lat, pickupLng: sonyWorld.lng, dropLat: silkBoard.lat, dropLng: silkBoard.lng, distanceMeters: distance, durationSeconds: Math.round(distance / 5.5), distanceSource: 'estimate', farePaise: fare.totalPaise, breakdown: fare.lines as object, expiresAt: created, usedAt: created, createdAt: created },
+      data: { passengerId: passenger.id, communityId: ainavilli.id, serviceType: 'REGULAR', fareRuleId: rule.id, pickupLat: centre.lat, pickupLng: centre.lng, dropLat: kondukuduru.lat, dropLng: kondukuduru.lng, distanceMeters: distance, durationSeconds: Math.round(distance / 5.5), distanceSource: 'estimate', farePaise: fare.totalPaise, breakdown: fare.lines as object, expiresAt: created, usedAt: created, createdAt: created },
     });
     const b = await prisma.booking.create({
       data: {
         reference: `RO-SEED${String(i).padStart(3, '0')}`,
-        type: 'REGULAR', status: 'COMPLETED', passengerId: passenger.id, communityId: koramangala.id, driverId: d1.driver.id, vehicleId: d1.vehicle.id,
+        type: 'REGULAR', status: 'COMPLETED', passengerId: passenger.id, communityId: ainavilli.id, driverId: d1.driver.id, vehicleId: d1.vehicle.id,
         fareRuleId: rule.id, quoteId: quote.id, idempotencyKey: `seed-${i}`,
-        pickupLat: sonyWorld.lat, pickupLng: sonyWorld.lng, pickupAddress: 'Sony World Junction (sample)', dropLat: silkBoard.lat, dropLng: silkBoard.lng, dropAddress: 'Silk Board Junction (sample)',
+        pickupLat: centre.lat, pickupLng: centre.lng, pickupAddress: 'Ainavilli Centre Stand (sample)', dropLat: kondukuduru.lat, dropLng: kondukuduru.lng, dropAddress: 'Kondukuduru (sample)',
         distanceMeters: distance, durationSeconds: quote.durationSeconds, quotedFarePaise: fare.totalPaise, finalFarePaise: fare.totalPaise,
         platformFeePaise: split.platformFeePaise, communityFeePaise: split.communityFeePaise, driverEarningsPaise: split.driverNetPaise,
         paymentMethod: 'CASH', paymentStatus: 'PAID', startPin: '0000', acceptedAt: created, startedAt: created, completedAt: created, createdAt: created,
@@ -298,7 +330,7 @@ export async function seedDatabase(client: PrismaClient) {
       },
     });
     await prisma.platformFeeRecord.create({
-      data: { bookingId: b.id, communityId: koramangala.id, ...split, platformFeeBps: 500, communityFeeBps: 200, createdAt: created },
+      data: { bookingId: b.id, communityId: ainavilli.id, ...split, platformFeeBps: 500, communityFeeBps: 200, createdAt: created },
     });
   }
 

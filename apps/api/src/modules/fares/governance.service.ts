@@ -4,7 +4,7 @@ import { prisma, withTransaction, type Db, type Tx } from '../../db.js';
 import { conflict, forbidden, notFound, unprocessable } from '../../utils/errors.js';
 import { addMinutes } from '../../utils/time.js';
 import { audit } from '../audit/audit.service.js';
-import { assertCommunityPermission, isSuperAdmin, type AuthContext } from '../auth/auth-context.js';
+import { assertCommunityPermission, isLocalAdmin, isSuperAdmin, type AuthContext } from '../auth/auth-context.js';
 import { communityAdminUserIds, notify, superAdminUserIds } from '../notifications/notification.service.js';
 import { findActiveRule } from './fare.service.js';
 
@@ -162,7 +162,7 @@ export async function createFareProposal(ctx: AuthContext, communityId: string, 
   );
 
   const approvers = await prisma.communityAdmin.findMany({
-    where: { communityId, active: true, role: { in: ['HEAD', 'APPROVER'] } },
+    where: { communityId, active: true, role: { in: ['LOCAL_ADMIN', 'APPROVER'] } },
     select: { userId: true },
   });
   await notify(
@@ -259,8 +259,8 @@ export async function withdrawProposal(ctx: AuthContext, proposalId: string, req
   const proposal = await prisma.governanceProposal.findUnique({ where: { id: proposalId } });
   if (!proposal) throw notFound('Proposal');
   assertCommunityPermission(ctx, proposal.communityId, 'community.fares.propose');
-  if (proposal.proposedById !== ctx.userId && !ctx.communityRoles.some((r) => r.communityId === proposal.communityId && r.role === 'HEAD')) {
-    throw forbidden('Only the proposer or the community head can withdraw a proposal');
+  if (proposal.proposedById !== ctx.userId && !isLocalAdmin(ctx, proposal.communityId) && !isSuperAdmin(ctx)) {
+    throw forbidden('Only the proposer or a local admin can withdraw a proposal');
   }
   const updated = await prisma.governanceProposal.updateMany({ where: { id: proposalId, status: 'PENDING' }, data: { status: 'WITHDRAWN', decidedAt: new Date() } });
   if (updated.count === 0) throw conflict('Only pending proposals can be withdrawn');
@@ -421,7 +421,7 @@ export async function createPolicyProposal(
     },
   });
   await audit({ action: 'policy.proposal_created', entityType: 'GovernanceProposal', entityId: proposal.id, communityId, before, after: effective }, { ctx, req });
-  const approvers = await prisma.communityAdmin.findMany({ where: { communityId, active: true, role: { in: ['HEAD', 'APPROVER'] } }, select: { userId: true } });
+  const approvers = await prisma.communityAdmin.findMany({ where: { communityId, active: true, role: { in: ['LOCAL_ADMIN', 'APPROVER'] } }, select: { userId: true } });
   await notify(
     approvers.map((a) => a.userId).filter((id) => id !== ctx.userId),
     { type: 'POLICY_PROPOSAL', title: 'Rule change awaiting review', body: input.title, link: `/community/${communityId}/fares` },

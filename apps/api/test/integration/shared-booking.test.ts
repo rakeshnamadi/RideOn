@@ -16,7 +16,7 @@ describe('shared auto seat booking', () => {
   beforeAll(async () => {
     await resetDatabase();
     passenger = await login(PHONES.passenger);
-    const route = await prisma.sharedRoute.findFirstOrThrow({ where: { code: 'KM-1' } });
+    const route = await prisma.sharedRoute.findFirstOrThrow({ where: { code: 'AV-1' } });
     const res = await api.get(`/api/v1/shared-trips/search?routeId=${route.id}`);
     departures = res.body.data;
     expect(departures.length).toBeGreaterThan(3);
@@ -118,7 +118,7 @@ describe('shared auto seat booking', () => {
     const manifest = await api.get(`/api/v1/shared-trips/${d.id}/manifest`).set(bearer(driver));
     expect(manifest.status).toBe(200);
     const entry = manifest.body.data.bookings[0];
-    expect(entry.passenger).toEqual({ firstName: 'Priya' });
+    expect(entry.passenger).toEqual({ firstName: 'Sravani' });
     expect(entry.seats).toHaveLength(2);
     // Other drivers cannot read the manifest.
     expect((await api.get(`/api/v1/shared-trips/${d.id}/manifest`).set(bearer(d2))).status).toBe(403);

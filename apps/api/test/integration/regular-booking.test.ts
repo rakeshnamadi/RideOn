@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { signPayload } from '../../src/modules/payments/providers.js';
-import { api, bearer, communityBySlug, goOnline, idem, login, PHONES, prisma, resetDatabase, SILK_BOARD, SONY_WORLD } from '../helpers.js';
+import { api, bearer, communityBySlug, goOnline, idem, login, PHONES, prisma, resetDatabase, DROP_POINT, PICKUP_POINT } from '../helpers.js';
 
 describe('regular auto booking — end to end', () => {
   let communityId: string;
@@ -10,26 +10,26 @@ describe('regular auto booking — end to end', () => {
 
   beforeAll(async () => {
     await resetDatabase();
-    communityId = (await communityBySlug('koramangala-autos')).id;
+    communityId = (await communityBySlug('ainavilli-autos')).id;
     [passenger, d1, d2] = await Promise.all([login(PHONES.passenger), login(PHONES.driver1), login(PHONES.driver2)]);
   });
 
   async function quote(token = passenger) {
-    const res = await api.post('/api/v1/fares/quotes').set(bearer(token)).send({ pickup: SONY_WORLD, drop: SILK_BOARD });
+    const res = await api.post('/api/v1/fares/quotes').set(bearer(token)).send({ pickup: PICKUP_POINT, drop: DROP_POINT });
     expect(res.status).toBe(201);
     return res.body.data;
   }
 
   it('shows a public fare estimate without an account', async () => {
-    const res = await api.post('/api/v1/fares/estimate').send({ pickup: SONY_WORLD, drop: SILK_BOARD });
+    const res = await api.post('/api/v1/fares/estimate').send({ pickup: PICKUP_POINT, drop: DROP_POINT });
     expect(res.status).toBe(200);
-    expect(res.body.data.communityName).toMatch(/Koramangala/);
+    expect(res.body.data.communityName).toMatch(/Ainavilli/);
     expect(res.body.data.fare.totalPaise % 100).toBe(0);
     expect(res.body.data.distanceSource).toBe('estimate'); // routing provider disabled in tests
   });
 
   it('rejects pickups outside every service area', async () => {
-    const res = await api.post('/api/v1/fares/quotes').set(bearer(passenger)).send({ pickup: { lat: 13.1, lng: 77.5 }, drop: SILK_BOARD });
+    const res = await api.post('/api/v1/fares/quotes').set(bearer(passenger)).send({ pickup: { lat: 13.1, lng: 77.5 }, drop: DROP_POINT });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('OUTSIDE_SERVICE_AREA');
   });
@@ -44,7 +44,7 @@ describe('regular auto booking — end to end', () => {
   let bookingId: string;
   it('books, dispatches to online drivers, and lets exactly one driver win the race to accept', async () => {
     await goOnline(d1, communityId);
-    await goOnline(d2, communityId, { lat: 12.9346, lng: 77.6112 });
+    await goOnline(d2, communityId, { lat: 16.6601, lng: 82.0201 });
     const q = await quote();
     const key = idem();
     const res = await api.post('/api/v1/bookings').set(bearer(passenger)).send({ quoteId: q.quoteId, idempotencyKey: key, pickupAddress: 'Sony World', dropAddress: 'Silk Board' });
@@ -194,7 +194,7 @@ describe('regular auto booking — end to end', () => {
 
   it('drivers who are not eligible cannot go online', async () => {
     const applicant = await login(PHONES.applicantDriver);
-    const res = await api.post('/api/v1/drivers/me/availability').set(bearer(applicant)).send({ status: 'ONLINE', communityId, ...SONY_WORLD });
+    const res = await api.post('/api/v1/drivers/me/availability').set(bearer(applicant)).send({ status: 'ONLINE', communityId, ...PICKUP_POINT });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe('NOT_ELIGIBLE');
     expect(res.body.error.details.length).toBeGreaterThan(0);
@@ -204,6 +204,6 @@ describe('regular auto booking — end to end', () => {
     await api.post('/api/v1/drivers/me/availability').set(bearer(d1)).send({ status: 'OFFLINE' }).expect(200);
     const driver = await prisma.driver.findFirstOrThrow({ where: { user: { phone: `+91${PHONES.driver1}` } } });
     expect(await prisma.driverLocation.findUnique({ where: { driverId: driver.id } })).toBeNull();
-    expect((await api.post('/api/v1/drivers/me/location').set(bearer(d1)).send(SONY_WORLD)).status).toBe(409);
+    expect((await api.post('/api/v1/drivers/me/location').set(bearer(d1)).send(PICKUP_POINT)).status).toBe(409);
   });
 });

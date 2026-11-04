@@ -190,6 +190,18 @@ model Community {
   description        String?         @db.Text
   contactPhone       String?         @db.VarChar(20)
   contactEmail       String?         @db.VarChar(191)
+  /// Master data the union maintains itself (branding shown on its console and public pages).
+  shortName          String?         @db.VarChar(40)
+  tagline            String?         @db.VarChar(200)
+  address            String?         @db.VarChar(300)
+  pincode            String?         @db.VarChar(10)
+  foundedYear        Int?
+  /// Hex colour like #0F4D3A used to accent the union console.
+  brandColor         String?         @db.VarChar(7)
+  /// Private storage key of the uploaded logo (served publicly via /communities/:id/logo).
+  logoKey            String?         @db.VarChar(100)
+  logoMime           String?         @db.VarChar(50)
+  logoUpdatedAt      DateTime?
   centerLat          Float
   centerLng          Float
   status             CommunityStatus @default(PENDING)
@@ -216,16 +228,18 @@ model Community {
   feeRecords      PlatformFeeRecord[]
   quotes          FareQuote[]
   availability    DriverAvailability[]
+  fareFeedback    FareFeedback[]
+  reports         CommunityReport[]
 
   @@index([cityId, status])
   @@map("communities")
 }
 
-/// Community-scoped administrative roles. Permissions per role are defined in
-/// apps/api/src/modules/auth/permissions.ts (COMMUNITY_ROLE_PERMISSIONS).
+/// Community (union) roles. LOCAL_ADMIN runs the union and delegates the roles below it.
+/// Default permissions per role: apps/api/src/modules/auth/permissions.ts (COMMUNITY_ROLE_PERMISSIONS).
 enum CommunityRole {
-  HEAD
-  ADMIN
+  LOCAL_ADMIN
+  REPORTER
   APPROVER
   OPERATOR
 }
@@ -235,6 +249,8 @@ model CommunityAdmin {
   communityId  String
   userId       String
   role         CommunityRole
+  /// Custom permission list set by a local admin for this delegate; null = the role's defaults.
+  permissions  Json?
   active       Boolean       @default(true)
   assignedById String?
   createdAt    DateTime      @default(now())
@@ -421,6 +437,7 @@ model Driver {
   tripInstances      SharedTripInstance[]
   ratingsReceived    Rating[]                   @relation("RatingDriver")
   complaints         Complaint[]                @relation("ComplaintAgainstDriver")
+  fareFeedback       FareFeedback[]
 
   @@index([verificationStatus])
   @@map("drivers")
@@ -1303,4 +1320,97 @@ model GeocodeCache {
 
   @@index([expiresAt])
   @@map("geocode_cache")
+}
+
+// ───────────────────────────── Union feedback, reports, activity ─────────────────────────────
+
+enum FareSentiment {
+  TOO_LOW
+  FAIR
+  TOO_HIGH
+}
+
+enum FeedbackStatus {
+  OPEN
+  ACKNOWLEDGED
+  ADOPTED
+  DECLINED
+}
+
+/// A driver's feedback or suggestion on the fares fixed by their union.
+model FareFeedback {
+  id                     String         @id @default(cuid())
+  communityId            String
+  driverId               String
+  serviceType            ServiceType
+  sharedRouteId          String?
+  /// The fare rule in force when the feedback was given.
+  fareRuleId             String?
+  sentiment              FareSentiment
+  suggestedBaseFarePaise Int?
+  suggestedPerKmPaise    Int?
+  suggestedPerSeatPaise  Int?
+  comment                String         @db.VarChar(1000)
+  status                 FeedbackStatus @default(OPEN)
+  response               String?        @db.VarChar(1000)
+  respondedById          String?
+  respondedAt            DateTime?
+  /// Set when the union turned this feedback into a fare proposal.
+  proposalId             String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  community              Community      @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  driver                 Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, status, createdAt])
+  @@index([driverId, createdAt])
+  @@map("fare_feedback")
+}
+
+enum ReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// A union report prepared by a reporter: a metrics snapshot for a period plus editable notes.
+model CommunityReport {
+  id          String       @id @default(cuid())
+  communityId String
+  title       String       @db.VarChar(200)
+  periodStart DateTime
+  periodEnd   DateTime
+  metrics     Json
+  notes       String?      @db.Text
+  status      ReportStatus @default(DRAFT)
+  createdById String
+  updatedById String?
+  publishedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  community   Community    @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+  @@map("community_reports")
+}
+
+/// Request-level activity log of the whole website (every API call: who, what, result, timing).
+/// Kept for 90 days by the purge-activity job. Separate from the append-only audit log.
+model ActivityLog {
+  id          String   @id @default(cuid())
+  userId      String?  @db.VarChar(30)
+  method      String   @db.VarChar(10)
+  path        String   @db.VarChar(300)
+  statusCode  Int
+  durationMs  Int
+  communityId String?  @db.VarChar(30)
+  ipAddress   String?  @db.VarChar(64)
+  userAgent   String?  @db.VarChar(255)
+  requestId   String?  @db.VarChar(64)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([statusCode, createdAt])
+  @@index([communityId, createdAt])
+  @@map("activity_logs")
 }

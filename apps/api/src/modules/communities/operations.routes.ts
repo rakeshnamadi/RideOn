@@ -215,6 +215,21 @@ communityOpsRoutes.patch('/pickup-points/:pointId', requireCommunity('community.
   ok(res, point);
 });
 
+/** Delete a pickup/drop point. Points still used as route stops must be removed from those routes first. */
+communityOpsRoutes.delete('/pickup-points/:pointId', requireCommunity('community.routes.manage'), async (req, res) => {
+  const cid = communityId(req);
+  const existing = await prisma.pickupPoint.findFirst({ where: { id: param(req, 'pointId'), communityId: cid } });
+  if (!existing) throw notFound('Pickup point');
+  const routes = await prisma.routeStop.findMany({ where: { pickupPointId: existing.id }, select: { route: { select: { code: true } } } });
+  if (routes.length) throw conflict(`Used by route ${routes.map((r) => r.route.code).join(', ')}. Remove it from those routes first, or disable it.`, 'IN_USE');
+  await prisma.$transaction([
+    prisma.driverAvailability.updateMany({ where: { standId: existing.id }, data: { standId: null, queuedAt: null } }),
+    prisma.pickupPoint.delete({ where: { id: existing.id } }),
+  ]);
+  await audit({ action: 'pickup_point.deleted', entityType: 'PickupPoint', entityId: existing.id, communityId: cid, before: existing }, { ctx: req.auth, req });
+  ok(res, { deleted: true });
+});
+
 // ─────────── Shared routes, stops and schedules ───────────
 
 const RouteSchema = z.object({
@@ -340,6 +355,32 @@ communityOpsRoutes.patch('/routes/:routeId/schedules/:scheduleId', requireCommun
   }
   await audit({ action: 'schedule.updated', entityType: 'RouteSchedule', entityId: schedule.id, communityId: cid, before: schedule, after: body }, { ctx: req.auth, req });
   ok(res, updated);
+});
+
+/** Delete a route that has never carried a booking; otherwise suspend it to keep the trip history. */
+communityOpsRoutes.delete('/routes/:routeId', requireCommunity('community.routes.manage'), async (req, res) => {
+  const cid = communityId(req);
+  const existing = await prisma.sharedRoute.findFirst({ where: { id: param(req, 'routeId'), communityId: cid } });
+  if (!existing) throw notFound('Route');
+  const booked = await prisma.booking.count({ where: { tripInstance: { routeId: existing.id } } });
+  if (booked) throw conflict('This route has bookings in its history. Suspend it instead of deleting.', 'HAS_HISTORY');
+  await prisma.$transaction(async (tx) => {
+    await tx.fareRule.updateMany({ where: { sharedRouteId: existing.id, effectiveTo: null }, data: { effectiveTo: new Date() } });
+    await tx.sharedRoute.delete({ where: { id: existing.id } });
+  });
+  await audit({ action: 'route.deleted', entityType: 'SharedRoute', entityId: existing.id, communityId: cid, before: { code: existing.code, name: existing.name } }, { ctx: req.auth, req });
+  ok(res, { deleted: true });
+});
+
+communityOpsRoutes.delete('/routes/:routeId/schedules/:scheduleId', requireCommunity('community.routes.manage'), async (req, res) => {
+  const cid = communityId(req);
+  const schedule = await prisma.routeSchedule.findFirst({ where: { id: param(req, 'scheduleId'), routeId: param(req, 'routeId'), route: { communityId: cid } } });
+  if (!schedule) throw notFound('Schedule');
+  const booked = await prisma.booking.count({ where: { tripInstance: { scheduleId: schedule.id } } });
+  if (booked) throw conflict('Departures of this schedule have bookings. Pause the schedule instead.', 'HAS_HISTORY');
+  await prisma.routeSchedule.delete({ where: { id: schedule.id } });
+  await audit({ action: 'schedule.deleted', entityType: 'RouteSchedule', entityId: schedule.id, communityId: cid, before: schedule }, { ctx: req.auth, req });
+  ok(res, { deleted: true });
 });
 
 // ─────────── Bookings & statistics ───────────

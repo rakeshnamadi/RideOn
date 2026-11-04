@@ -4,6 +4,7 @@ import { dispatchNextRound, recordStatus } from '../modules/bookings/booking.ser
 import { notify } from '../modules/notifications/notification.service.js';
 import { ensureTripInstances, expireSeatHolds } from '../modules/shared-trips/shared-trip.service.js';
 import { emitToUser } from '../sockets/index.js';
+import { purgeOldActivity } from '../modules/activity/activity.js';
 import { addMinutes } from '../utils/time.js';
 
 /** Expire unanswered offers and move to the next batch of drivers. */
@@ -74,6 +75,7 @@ export const JOBS: Job[] = [
   { name: 'generate-departures', everyMs: 30 * 60_000, run: () => ensureTripInstances() },
   { name: 'departure-reminders', everyMs: 60_000, run: sendDepartureReminders },
   { name: 'purge-locations', everyMs: 5 * 60_000, run: purgeStaleLocations },
+  { name: 'purge-activity', everyMs: 6 * 60 * 60_000, run: purgeOldActivity },
 ];
 
 /**

@@ -54,15 +54,17 @@ export async function registerUser(input: RegisterInput, req: Request) {
   return user.id;
 }
 
-export async function authenticateCredentials(identifier: string, password: string) {
+export async function authenticateCredentials(identifier: string, password: string, req?: Request) {
   const user = await prisma.user.findFirst({
     where: identifier.includes('@') ? { email: identifier.toLowerCase() } : { phone: identifier },
   });
   if (!user) {
     await dummyVerify(password);
+    await audit({ action: 'auth.login_failed', entityType: 'User', after: { reason: 'unknown_account' } }, { req });
     throw unauthorized('Incorrect phone/email or password');
   }
   if (user.lockedUntil && user.lockedUntil > new Date()) {
+    await audit({ action: 'auth.login_blocked', entityType: 'User', entityId: user.id, after: { reason: 'locked' } }, { req });
     throw new AppError(
       423,
       'ACCOUNT_LOCKED',
@@ -79,6 +81,7 @@ export async function authenticateCredentials(identifier: string, password: stri
         lockedUntil: failed >= MAX_FAILED_LOGINS ? addMinutes(new Date(), LOCKOUT_MINUTES) : null,
       },
     });
+    await audit({ action: failed >= MAX_FAILED_LOGINS ? 'auth.account_locked' : 'auth.login_failed', entityType: 'User', entityId: user.id, after: { reason: 'wrong_password', attempt: failed } }, { req });
     throw unauthorized('Incorrect phone/email or password');
   }
   if (user.status !== 'ACTIVE') throw forbidden('This account is suspended. Contact support for help.');
@@ -86,6 +89,7 @@ export async function authenticateCredentials(identifier: string, password: stri
     where: { id: user.id },
     data: { failedLoginCount: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
+  await audit({ action: 'auth.login', entityType: 'User', entityId: user.id }, { req });
   return user;
 }
 
