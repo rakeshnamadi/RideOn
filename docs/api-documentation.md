@@ -128,18 +128,50 @@ Related:
 | POST | `/shared-trips/:id/assign` `{driverId}` · `/shared-trips/:id/cancel` `{reason}` | queue.manage · routes.manage |
 | GET/POST | `/fares/communities/:communityId/proposals` (GET lists fare **and** policy proposals; `type`, `policyChanges`, `policyBefore`) | view · fares.propose |
 | POST | `/fares/proposals/:id/votes` `{decision: APPROVE\|REJECT, comment?}` — applies either proposal type once approvals (and any platform review) are complete | fares.approve |
-| POST | `/fares/proposals/:id/withdraw` | proposer or head |
+| POST | `/fares/proposals/:id/withdraw` | proposer, local admin or super admin |
 | GET/PATCH | `/complaints?communityId&status` · `/complaints/:id` | complaints.manage |
 | GET | `/reports/communities/:id/statements` | statements.view |
 | GET | `/reports/bookings.csv?communityId&from&to` | statements.view |
 
+### Team, master data, feedback and reports
+
+| Method | Path (under `/communities/:communityId`) | Purpose |
+|---|---|---|
+| GET | `/team-catalog` | Permission labels, role defaults, roles the caller may assign |
+| GET/POST | `/admins` | List the team; assign a role by mobile number (local admins: only roles below them) |
+| PATCH/DELETE | `/admins/:adminId` | Change role or custom `permissions` (`null` = role defaults); remove |
+| PATCH | `/` | Master data: name, shortName, tagline, description, address, pincode, foundedYear, brandColor, contacts |
+| GET | `/logo` | Public: the union's logo |
+| POST/DELETE | `/logo` | Upload (field `logo`, PNG or JPEG, up to 1 MB) or remove |
+| GET/POST | `/reports` | List; prepare `{title, from, to, notes?}` |
+| GET/PATCH/DELETE | `/reports/:reportId` | Read with metrics; edit or publish; delete a draft |
+| POST | `/reports/:reportId/refresh` | Recompute a draft's figures |
+| GET | `/reports/:reportId/export.csv` | Download |
+| DELETE | `/pickup-points/:pointId`, `/routes/:routeId`, `/routes/:routeId/schedules/:scheduleId`, `/announcements/:announcementId` | Delete; `409` if in use or has history |
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/fare-feedback` | Approved member driver: feedback on a union's fare (5 a day) |
+| GET | `/fare-feedback/mine` | Driver: own feedback and replies |
+| GET | `/fare-feedback/communities/:communityId` | Union (`community.feedback.manage`): feedback, with `meta.summary` |
+| PATCH | `/fare-feedback/:id` | Union: `{status, response, proposalId?}` |
+
 ## Platform admin — `/admin/…` (SUPER_ADMIN)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/users/:id` | A person with their platform and union roles |
+| PUT | `/users/:id/roles` | Set platform roles. No self-removal of super admin; last super admin protected |
+| POST/DELETE | `/users/:id/community-roles[/:assignmentId]` | Assign or remove a union role |
+| DELETE | `/cities/:id`, `/communities/:id` | Delete; `409` if in use or has history |
+| GET | `/activity`, `/activity/summary`, `/activity/export.csv` | Activity log, filterable by userId, communityId, path, method, outcome, from, to |
+
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/admin/dashboard` | Platform metrics, open issues, recent SOS |
 | GET/POST/PATCH | `/admin/cities[/:id]` | Supported cities |
-| GET/POST | `/admin/communities` | List / create (optionally assigning a head) |
+| GET/POST | `/admin/communities` | List / create (optionally assigning a local admin) |
 | POST | `/admin/communities/:id/status` | Activate / suspend / deactivate (reason required unless activating) |
 | PUT | `/admin/communities/:id/platform-policy` | Max increase without review, distance fares allowed, community fee |
 | GET | `/admin/drivers` · POST `/admin/drivers/:id/verification` · POST `/admin/drivers/:id/status` · POST `/admin/documents/:id/review` | Verification and platform-wide suspension |

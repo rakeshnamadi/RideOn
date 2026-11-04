@@ -180,10 +180,10 @@ const TONES: Record<string, string> = {
 };
 
 const STATUS_TONE: Record<string, keyof typeof TONES> = {
-  ACTIVE: 'green', APPROVED: 'green', VERIFIED: 'green', COMPLETED: 'green', PAID: 'green', SUCCEEDED: 'green', ONLINE: 'green', CONFIRMED: 'green', RESOLVED: 'green', APPLIED: 'green',
-  PENDING: 'amber', APPLIED_MEMBERSHIP: 'amber', UNDER_REVIEW: 'amber', REQUESTED: 'amber', PAYMENT_PENDING: 'amber', OPEN: 'amber', IN_REVIEW: 'amber', HELD: 'amber', SCHEDULED: 'blue', BOARDING: 'blue', DRAFT: 'gray',
+  ACTIVE: 'green', APPROVED: 'green', PUBLISHED: 'green', ADOPTED: 'green', VERIFIED: 'green', COMPLETED: 'green', PAID: 'green', SUCCEEDED: 'green', ONLINE: 'green', CONFIRMED: 'green', RESOLVED: 'green', APPLIED: 'green',
+  PENDING: 'amber', APPLIED_MEMBERSHIP: 'amber', UNDER_REVIEW: 'amber', REQUESTED: 'amber', PAYMENT_PENDING: 'amber', OPEN: 'amber', IN_REVIEW: 'amber', HELD: 'amber', SCHEDULED: 'blue', BOARDING: 'blue', DRAFT: 'gray', ACKNOWLEDGED: 'blue',
   ACCEPTED: 'blue', ARRIVING: 'blue', IN_PROGRESS: 'blue', ON_TRIP: 'blue', ESCALATED: 'red', URGENT: 'red', HIGH: 'amber',
-  REJECTED: 'red', SUSPENDED: 'red', CANCELLED: 'gray', EXPIRED: 'gray', NO_DRIVER_AVAILABLE: 'red', NO_SHOW: 'red', PAYMENT_FAILED: 'red', FAILED: 'red', DEACTIVATED: 'gray', OFFLINE: 'gray', INACTIVE: 'gray', WITHDRAWN: 'gray', LEFT: 'gray', NOT_DUE: 'gray',
+  REJECTED: 'red', SUSPENDED: 'red', CANCELLED: 'gray', EXPIRED: 'gray', NO_DRIVER_AVAILABLE: 'red', NO_SHOW: 'red', PAYMENT_FAILED: 'red', FAILED: 'red', DECLINED: 'gray', DEACTIVATED: 'gray', OFFLINE: 'gray', INACTIVE: 'gray', WITHDRAWN: 'gray', LEFT: 'gray', NOT_DUE: 'gray',
   REFUNDED: 'blue', PARTIALLY_REFUNDED: 'blue',
 };
 

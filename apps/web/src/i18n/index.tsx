@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { en } from './en';
 import { hi } from './hi';
+import { te } from './te';
 
 /**
  * Minimal i18n layer. Strings live in per-language dictionaries keyed by English
@@ -8,8 +9,9 @@ import { hi } from './hi';
  * adding a dictionary file — no component changes.
  */
 export type MessageKey = keyof typeof en;
-const DICTIONARIES: Record<string, Partial<Record<MessageKey, string>>> = { en, hi };
+const DICTIONARIES: Record<string, Partial<Record<MessageKey, string>>> = { en, hi, te };
 export const LANGUAGES = [
+  { code: 'te', label: 'తెలుగు' },
   { code: 'en', label: 'English' },
   { code: 'hi', label: 'हिन्दी' },
 ] as const;

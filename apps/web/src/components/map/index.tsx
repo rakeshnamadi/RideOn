@@ -13,10 +13,11 @@ const TILE_URL = import.meta.env.VITE_TILE_URL ?? 'https://tile.openstreetmap.or
 const TILE_ATTRIBUTION =
   import.meta.env.VITE_TILE_ATTRIBUTION ?? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-export const BENGALURU: LatLng = { lat: 12.9352, lng: 77.6245 };
+/** Ainavilli (533211), Dr. B.R. Ambedkar Konaseema, Andhra Pradesh: the primary service area. */
+export const DEFAULT_CENTER: LatLng = { lat: 16.6638, lng: 82.031 };
 
 export function BaseMap({
-  center = BENGALURU,
+  center = DEFAULT_CENTER,
   zoom = 14,
   className,
   children,

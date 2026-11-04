@@ -4,7 +4,7 @@ import { ACCOUNTS, communityId, sessionFor } from '../support';
 /** Required E2E workflows 8–10: isolation between communities and platform oversight. */
 test.describe('role boundaries', () => {
   test("a community admin cannot open another community's console", async ({ browser, request }) => {
-    const km = await communityId(request, 'Koramangala');
+    const km = await communityId(request, 'Ainavilli');
     const { page, context } = await sessionFor(browser, ACCOUNTS.inHead);
     await expect(page).toHaveURL(/\/community\//);
     await page.goto(`/community/${km}/drivers`);
@@ -16,7 +16,7 @@ test.describe('role boundaries', () => {
   });
 
   test('a passenger cannot open the community or platform consoles', async ({ browser, request }) => {
-    const km = await communityId(request, 'Koramangala');
+    const km = await communityId(request, 'Ainavilli');
     const { page, context } = await sessionFor(browser, ACCOUNTS.passenger);
     for (const path of [`/community/${km}`, '/admin', '/driver']) {
       await page.goto(path);
@@ -30,9 +30,9 @@ test.describe('role boundaries', () => {
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByRole('heading', { name: 'Platform overview' })).toBeVisible();
     await expect(page.getByText('Active communities')).toBeVisible();
-    await page.getByRole('link', { name: 'Communities', exact: true }).click();
-    await expect(page.getByRole('link', { name: 'Koramangala Auto Drivers Association' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Indiranagar Auto Union' })).toBeVisible();
+    await page.getByRole('link', { name: 'Auto unions', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'Ainavilli Auto Drivers Union' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Amalapuram Town Auto Union' })).toBeVisible();
     await page.getByRole('link', { name: 'Bookings', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'All bookings' })).toBeVisible();
     await expect(page.getByText(/RO-SEED/).first()).toBeVisible();

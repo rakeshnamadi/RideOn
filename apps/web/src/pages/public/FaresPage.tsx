@@ -6,11 +6,15 @@ import { useApi } from '@/hooks/api';
 import type { FareRule, PickupPoint, RouteStop } from '@/types';
 import { daysLabel, dateTime, inr } from '@/utils/format';
 import { FareRuleSummary } from '@/features/fares/FareRuleSummary';
+import { UnionMark } from '@/features/union/UnionMark';
 
 interface CommunityListItem {
   id: string;
   name: string;
   description: string | null;
+  shortName?: string | null;
+  brandColor?: string | null;
+  logoUrl?: string | null;
   city: { name: string };
   _count: { sharedRoutes: number };
 }
@@ -52,10 +56,15 @@ export default function FaresPage() {
                     aria-current={c.id === id}
                     className={`w-full rounded-xl p-3 text-left ring-1 ${c.id === id ? 'bg-brand-50 ring-brand-600' : 'bg-white ring-stone-200 hover:bg-stone-50'}`}
                   >
-                    <p className="font-medium">{c.name}</p>
-                    <p className="text-xs text-stone-500">
-                      {c.city.name} · {c._count.sharedRoutes} shared route{c._count.sharedRoutes === 1 ? '' : 's'}
-                    </p>
+                    <span className="flex items-center gap-2.5">
+                      <UnionMark name={c.name} shortName={c.shortName} logoUrl={c.logoUrl} brandColor={c.brandColor} />
+                      <span className="min-w-0">
+                        <span className="block font-medium">{c.name}</span>
+                        <span className="block text-xs text-stone-500">
+                          {c.city.name} · {c._count.sharedRoutes} shared route{c._count.sharedRoutes === 1 ? '' : 's'}
+                        </span>
+                      </span>
+                    </span>
                   </button>
                 </li>
               ))}

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Checkbox, ConfirmDialog, DataTable, DefinitionList, Input, Modal, PageHeader, QueryState, Select, StatusBadge, Textarea } from '@/components/ui';
+import { Alert, Button, Card, Checkbox, DefinitionList, Input, Modal, PageHeader, QueryState, Select, Textarea } from '@/components/ui';
 import { formatPolicyValue, POLICY_LABELS } from '@/features/governance/PolicyChangeSummary';
 import { useAction, useApi } from '@/hooks/api';
 import { useCommunity } from '@/layouts/CommunityLayout';
 import { api } from '@/services/api';
-import { humanize, inr, rupeesToPaise } from '@/utils/format';
+import { inr, rupeesToPaise } from '@/utils/format';
 
 interface Policy {
   fareApprovalMode: string;
@@ -20,13 +20,6 @@ interface Policy {
   bookingRequestTimeoutSec: number;
   seatHoldMinutes: number;
 }
-interface Admin {
-  id: string;
-  role: string;
-  active: boolean;
-  user: { id: string; name: string; phone: string };
-}
-
 /** Operational settings: changed directly by whoever holds policy.edit (audited). */
 function OperationalForm({ policy, editable }: { policy: Policy; editable: boolean }) {
   const { id } = useCommunity();
@@ -111,64 +104,19 @@ function GovernanceRules({ policy, canPropose }: { policy: Policy; canPropose: b
 }
 
 export default function CommunitySettingsPage() {
-  const { id, community, can } = useCommunity();
+  const { id, can } = useCommunity();
   const policy = useApi<Policy>(['community', id, 'policy'], `/communities/${id}/policy`);
-  const admins = useApi<Admin[]>(['community', id, 'admins'], `/communities/${id}/admins`);
-  const [profile, setProfile] = useState({ name: community.name, description: String(community.description ?? ''), contactPhone: String(community.contactPhone ?? '') });
-  const saveProfile = useAction(() => api.patch(`/communities/${id}`, { name: profile.name, description: profile.description || null, contactPhone: profile.contactPhone || null }), { invalidate: [['community', id]], success: 'Profile saved' });
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState('ADMIN');
-  const addAdmin = useAction(() => api.post(`/communities/${id}/admins`, { phone, role }), { invalidate: [['community', id, 'admins']], success: 'Role assigned', onSuccess: () => setPhone('') });
-  const [removing, setRemoving] = useState<Admin | null>(null);
-  const removeAdmin = useAction(() => api.del(`/communities/${id}/admins/${removing!.id}`), { invalidate: [['community', id, 'admins']], success: 'Role removed', onSuccess: () => setRemoving(null) });
-
   return (
     <div className="space-y-5">
-      <PageHeader title="Settings" />
+      <PageHeader title="Settings" subtitle="How your union runs. Name, logo and contact details are under Union profile." />
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Community profile">
-          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); saveProfile.mutate(); }}>
-            <fieldset disabled={!can('profile.edit')} className="space-y-3">
-              <Input label="Name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
-              <Textarea label="Description" value={profile.description} onChange={(e) => setProfile({ ...profile, description: e.target.value })} />
-              <Input label="Public contact phone" value={profile.contactPhone} onChange={(e) => setProfile({ ...profile, contactPhone: e.target.value })} />
-            </fieldset>
-            {can('profile.edit') && <Button type="submit" loading={saveProfile.isPending}>Save profile</Button>}
-          </form>
-        </Card>
         <Card title="Governance rules">
           <QueryState query={policy}>{(p) => <GovernanceRules policy={p} canPropose={can('fares.propose')} />}</QueryState>
         </Card>
-        <Card title="Operational settings" className="lg:col-span-2">
+        <Card title="Operational settings">
           <QueryState query={policy}>{(p) => <OperationalForm policy={p} editable={can('policy.edit')} />}</QueryState>
         </Card>
       </div>
-      <Card title="Administrators">
-        <QueryState query={admins}>
-          {(rows) => (
-            <DataTable
-              rows={rows}
-              rowKey={(r) => r.id}
-              columns={[
-                { header: 'Name', cell: (r) => r.user.name },
-                { header: 'Phone', cell: (r) => r.user.phone },
-                { header: 'Role', cell: (r) => humanize(r.role) },
-                { header: 'Status', cell: (r) => <StatusBadge status={r.active ? 'ACTIVE' : 'INACTIVE'} /> },
-                { header: '', cell: (r) => can('admins.manage') && r.active && <Button size="sm" variant="ghost" onClick={() => setRemoving(r)}>Remove</Button> },
-              ]}
-            />
-          )}
-        </QueryState>
-        {can('admins.manage') && (
-          <form className="mt-4 flex flex-wrap items-end gap-3 border-t border-stone-200 pt-4" onSubmit={(e) => { e.preventDefault(); addAdmin.mutate(); }}>
-            <Input label="Mobile number of an existing user" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)} options={['HEAD', 'ADMIN', 'APPROVER', 'OPERATOR'].map((r) => ({ value: r, label: humanize(r) }))} />
-            <Button type="submit" disabled={phone.length < 10} loading={addAdmin.isPending}>Assign role</Button>
-          </form>
-        )}
-        <p className="mt-3 text-xs text-stone-500">Head: everything. Admin: operations and fare proposals. Approver: votes on fare proposals. Operator: live queue, bookings and complaints.</p>
-      </Card>
-      <ConfirmDialog open={!!removing} title={`Remove ${removing?.user.name}?`} message="They lose access to this community's console immediately." confirmLabel="Remove" loading={removeAdmin.isPending} onClose={() => setRemoving(null)} onConfirm={() => removeAdmin.mutate()} />
     </div>
   );
 }

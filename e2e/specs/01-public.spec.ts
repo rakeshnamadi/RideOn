@@ -27,11 +27,11 @@ test.describe('public pages (no account)', () => {
 
   test('published fares and shared routes are browsable without signing in', async ({ page }) => {
     await page.goto('/fares');
-    await page.getByRole('button', { name: /Koramangala Auto Drivers Association/ }).click();
+    await page.getByRole('button', { name: /Ainavilli Auto Drivers Union/ }).click();
     await expect(page.getByRole('heading', { name: 'Regular auto fare' })).toBeVisible();
     await expect(page.getByText('₹30 for the first 2.0 km')).toBeVisible();
-    await expect(page.getByRole('heading', { name: /KM-1/ })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Route KM-1' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /AV-1/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Route AV-1' })).toBeVisible();
     await expect(page.getByText(/OpenStreetMap/).first()).toBeVisible();
   });
 

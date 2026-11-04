@@ -92,21 +92,34 @@ All seeded accounts use the password **`Demo@12345`**. They exist only when you 
 
 | Role | Phone | Notes |
 |---|---|---|
-| Platform super admin | 9000000001 | Also has a passenger role |
-| Koramangala community head | 9000000002 | All community permissions |
-| Koramangala community admin | 9000000003 | Operations + fare proposals |
-| Koramangala fare approver | 9000000004 | Votes on fare proposals |
-| Indiranagar community head | 9000000005 | Different community (isolation demo) |
-| Drivers (Koramangala, verified) | 9000000010–12 | Approved members with approved vehicles |
+| Super admin | 9000000001 | Control over everything; assigns roles. Also a passenger |
+| Local admin, Ainavilli | 9000000002, 9000000003 | Runs the union: drivers, prices, points, master data, team |
+| Approver, Ainavilli | 9000000004 | Votes on fare proposals, answers fare feedback |
+| Local admin, Amalapuram | 9000000005 | Different union (isolation demo) |
+| Reporter, Ainavilli | 9000000006 | Reports, driver approval, area geolocation |
+| Drivers, Ainavilli (verified) | 9000000010–12 | Approved members with approved vehicles |
 | Driver applicant | 9000000013 | Pending membership and verification |
-| Driver (Indiranagar) | 9000000014 | |
+| Driver, Amalapuram | 9000000014 | |
 | Passengers | 9000000020, 9000000021 | |
 
-The seed creates Bengaluru with two active communities (Koramangala, Indiranagar) and one pending one, service areas, auto stands, two shared routes with schedules (KM-1, IN-1), approved fare tables, fee schedules, and 12 historical completed trips (clearly marked sample data) so dashboards and statements have content.
+The seed centres on the primary service area, **pincode 533211: Ainavilli mandal, Dr. B.R. Ambedkar Konaseema district, Andhra Pradesh**. It creates two active unions (Ainavilli, Amalapuram Town) and one pending one (Kothapeta), service areas, auto stands, two shared routes with schedules (AV-1, AM-1), approved fare tables, fee schedules, and 12 historical completed trips (clearly marked sample data). Union names and details are placeholders, not real organisations.
+
+## Roles
+
+| Role | Scope | Can do |
+|---|---|---|
+| **Super admin** | Platform | Assign platform and union roles to anyone registered; update or delete configured data; every union permission in every union |
+| **Local admin** | One union | Approve drivers; fix prices; add or delete pickup and drop points; edit union master data (name, logo, colour, contacts); give roles and individual permissions to the people below them |
+| **Reporter** | One union | Prepare, view and edit reports; approve new drivers; set area geolocation |
+| **Approver** | One union | Vote on fare proposals; read and answer driver fare feedback |
+| **Operator** | One union | Live queue and departures; bookings; complaints |
+| **Driver** | Own account | Give feedback and price suggestions on union fares; raise tickets; run trips |
+
+Local admins can switch individual permissions on or off for each delegate under **Team & permissions**. Each person sees only the pages their permissions allow, and the API enforces the same rules. Every API request is recorded in the local database's activity log (**Activity log** in the platform console, kept 90 days); decisions are kept permanently in the audit log.
 
 ### Trying a full trip locally
 
-Drivers need a location to receive offers. In the driver console choose **Set on the map** (labelled *Manual location*) when going online, or use device GPS. Then sign in as a passenger in another browser profile and book a ride inside the Koramangala area.
+Drivers need a location to receive offers. In the driver console choose **Set on the map** (labelled *Manual location*) when going online, or use device GPS. Then sign in as a passenger in another browser profile and book a ride inside the Ainavilli area.
 
 ## Tests
 

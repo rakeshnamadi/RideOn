@@ -25,7 +25,7 @@ interface DriverMe {
 }
 
 const LicenseSchema = z.object({
-  licenseNumber: z.string().trim().toUpperCase().regex(/^[A-Z]{2}[0-9A-Z -]{8,18}$/, 'Enter your licence number as printed, e.g. KA0120190012345'),
+  licenseNumber: z.string().trim().toUpperCase().regex(/^[A-Z]{2}[0-9A-Z -]{8,18}$/, 'Enter your licence number as printed, e.g. AP0520190012345'),
   licenseExpiry: z.string().min(1, 'Required'),
 });
 const VehicleSchema = z.object({
@@ -183,7 +183,7 @@ export default function DriverProfilePage() {
           </ul>
           <form className="grid gap-3 border-t border-stone-200 pt-3 sm:grid-cols-2" onSubmit={vForm.handleSubmit((v) => addVehicle.mutate(v))} noValidate>
             <Select label="Community" className="sm:col-span-2" {...vForm.register('communityId')} error={vForm.formState.errors.communityId?.message} options={[{ value: '', label: 'Choose…' }, ...memberCommunities.map((m) => ({ value: m.communityId, label: m.community.name }))]} />
-            <Input label="Registration no." placeholder="KA01AB1234" {...vForm.register('registrationNumber')} error={vForm.formState.errors.registrationNumber?.message} />
+            <Input label="Registration no." placeholder="AP05TA1234" {...vForm.register('registrationNumber')} error={vForm.formState.errors.registrationNumber?.message} />
             <Select label="Fuel" {...vForm.register('fuelType')} options={['CNG', 'LPG', 'PETROL', 'DIESEL', 'ELECTRIC'].map((f) => ({ value: f, label: f }))} />
             <Input label="Make" placeholder="Bajaj" {...vForm.register('make')} error={vForm.formState.errors.make?.message} />
             <Input label="Model" placeholder="RE Compact" {...vForm.register('model')} error={vForm.formState.errors.model?.message} />

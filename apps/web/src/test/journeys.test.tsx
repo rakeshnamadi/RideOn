@@ -34,7 +34,7 @@ describe('route guards', () => {
     mockApi((url) => {
       if (url.endsWith('/auth/refresh')) return { status: 200, body: { data: { accessToken: 't' } } };
       if (url.endsWith('/auth/me')) {
-        return { status: 200, body: { data: { ...passengerMe, roles: ['COMMUNITY_ADMIN'], communities: [{ id: 'mine', name: 'Mine', slug: 'mine', status: 'ACTIVE', role: 'HEAD', permissions: [] }] } } };
+        return { status: 200, body: { data: { ...passengerMe, roles: ['COMMUNITY_ADMIN'], communities: [{ id: 'mine', name: 'Mine', slug: 'mine', status: 'ACTIVE', role: 'LOCAL_ADMIN', permissions: [] }] } } };
       }
       return { status: 200, body: { data: [] } };
     });

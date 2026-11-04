@@ -27,6 +27,7 @@ export default function AnnouncementsPage() {
       setBody('');
     },
   });
+  const remove = useAction((a: Announcement) => api.del(`/communities/${id}/announcements/${a.id}`), { invalidate: [['community', id, 'announcements'], ['public-community']], success: 'Announcement deleted' });
   return (
     <div className="space-y-5">
       <PageHeader title="Announcements" subtitle="Driver announcements are also sent as notifications. Passenger announcements appear on the public fares page." />
@@ -47,7 +48,7 @@ export default function AnnouncementsPage() {
               <Card key={a.id}>
                 <p className="flex items-center gap-2 font-medium">{a.title} <Badge>{humanize(a.audience)}</Badge></p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700">{a.body}</p>
-                <p className="mt-1 text-xs text-stone-500">{dateTime(a.createdAt)}</p>
+                <div className="mt-1 flex items-center gap-2"><p className="text-xs text-stone-500">{dateTime(a.createdAt)}</p>{can('announcements.manage') && <Button size="sm" variant="ghost" onClick={() => remove.mutate(a)}>Delete</Button>}</div>
               </Card>
             ))}
             {list.length === 0 && <p className="text-sm text-stone-500">No announcements yet.</p>}

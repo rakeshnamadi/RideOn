@@ -7,16 +7,16 @@ import { ACCOUNTS, communityId, sessionFor } from '../support';
  */
 test.describe('community governance', () => {
   test('a community admin creates a shared route with ordered stops', async ({ browser, request }) => {
-    const km = await communityId(request, 'Koramangala');
+    const km = await communityId(request, 'Ainavilli');
     const { page, context } = await sessionFor(browser, ACCOUNTS.kmAdmin);
     await page.goto(`/community/${km}/routes`);
     await page.getByRole('button', { name: 'New route' }).click();
     const dialog = page.getByRole('dialog', { name: 'New shared route' });
     await dialog.getByLabel('Code').fill('KM-E2E');
-    await dialog.getByLabel('Name', { exact: true }).fill('Forum → Madiwala (E2E)');
+    await dialog.getByLabel('Name', { exact: true }).fill('Muktheswaram → Pothukurru (E2E)');
     const stops = dialog.getByLabel('Stop', { exact: true });
-    await stops.nth(0).selectOption({ label: 'Forum Mall Stand' });
-    await stops.nth(1).selectOption({ label: 'Madiwala Market' });
+    await stops.nth(0).selectOption({ label: 'Muktheswaram Stand' });
+    await stops.nth(1).selectOption({ label: 'Pothukurru' });
     await dialog.getByRole('button', { name: 'Create route' }).click();
     await expect(page.getByText('Route created as a draft')).toBeVisible();
     await expect(page.getByRole('heading', { name: /KM-E2E/ })).toBeVisible();
@@ -24,7 +24,7 @@ test.describe('community governance', () => {
   });
 
   test('rule changes need an approver: admin proposes, approver approves', async ({ browser, request }) => {
-    const km = await communityId(request, 'Koramangala');
+    const km = await communityId(request, 'Ainavilli');
 
     // Admin proposes a higher cancellation fee.
     const admin = await sessionFor(browser, ACCOUNTS.kmAdmin);

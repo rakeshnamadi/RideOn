@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { BaseMap, FitBounds, Pin, SharedRoutePath } from '@/components/map';
-import { Alert, Badge, Button, Card, DataTable, Input, Modal, PageHeader, QueryState, Select, StatusBadge, Textarea } from '@/components/ui';
+import { Alert, Badge, Button, Card, ConfirmDialog, DataTable, Input, Modal, PageHeader, QueryState, Select, StatusBadge, Textarea } from '@/components/ui';
 import { useAction, useApi } from '@/hooks/api';
 import { useCommunity } from '@/layouts/CommunityLayout';
 import { api } from '@/services/api';
@@ -56,7 +56,7 @@ function RouteForm({ points, onDone }: { points: PickupPoint[]; onDone: () => vo
     <form className="space-y-3" onSubmit={form.handleSubmit((v) => create.mutate(v))} noValidate>
       <div className="grid gap-3 sm:grid-cols-2">
         <Input label="Code" placeholder="KM-2" {...form.register('code')} error={e.code?.message} />
-        <Input label="Name" placeholder="Forum → Madiwala" {...form.register('name')} error={e.name?.message} />
+        <Input label="Name" placeholder="Veeravallipalem → Kondukuduru" {...form.register('name')} error={e.name?.message} />
         <Input label="Max seats" type="number" {...form.register('maxSeats')} error={e.maxSeats?.message} hint="Cannot exceed approved vehicle capacity" />
         <Input label="Booking closes (min before)" type="number" {...form.register('bookingCutoffMinutes')} error={e.bookingCutoffMinutes?.message} />
         <Input label="Free cancellation until (min before)" type="number" {...form.register('cancellationCutoffMinutes')} error={e.cancellationCutoffMinutes?.message} />
@@ -124,6 +124,9 @@ export default function RoutesPage() {
   const status = useAction(({ r, status }: { r: Route; status: string }) => api.patch(`/communities/${id}/routes/${r.id}`, { status }), { invalidate: [['community', id, 'routes'], ['departures']], success: 'Route status updated' });
   const toggleSchedule = useAction(({ r, s }: { r: Route; s: Route['schedules'][number] }) => api.patch(`/communities/${id}/routes/${r.id}/schedules/${s.id}`, { active: !s.active }), { invalidate: [['community', id, 'routes']], success: 'Schedule updated' });
 
+  const [removing, setRemoving] = useState<{ r: Route; scheduleId?: string; label: string } | null>(null);
+  const remove = useAction(() => api.del(`/communities/${id}/routes/${removing!.r.id}${removing!.scheduleId ? `/schedules/${removing!.scheduleId}` : ''}`), { invalidate: [['community', id, 'routes'], ['departures']], success: 'Deleted', onSettled: () => setRemoving(null) });
+
   return (
     <div className="space-y-5">
       <PageHeader title="Shared routes" subtitle="Scheduled routes with fixed stops. Routes go live only with an approved fare." actions={editable && <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>New route</Button>} />
@@ -140,6 +143,7 @@ export default function RoutesPage() {
                       {r.status !== 'ACTIVE' && <Button size="sm" onClick={() => status.mutate({ r, status: 'ACTIVE' })}>Activate</Button>}
                       {r.status === 'ACTIVE' && <Button size="sm" variant="secondary" onClick={() => status.mutate({ r, status: 'SUSPENDED' })}>Suspend</Button>}
                       <Button size="sm" variant="secondary" onClick={() => setScheduleFor(r)}>Add departure time</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setRemoving({ r, label: `route ${r.code}` })}>Delete</Button>
                     </>
                   )
                 }
@@ -157,7 +161,7 @@ export default function RoutesPage() {
                         { header: 'Days', cell: (s) => daysLabel(s.daysOfWeek) },
                         { header: 'Seats', cell: (s) => s.seatCapacity },
                         { header: 'Status', cell: (s) => <StatusBadge status={s.active ? 'ACTIVE' : 'INACTIVE'} /> },
-                        { header: '', cell: (s) => editable && <Button size="sm" variant="ghost" onClick={() => toggleSchedule.mutate({ r, s })}>{s.active ? 'Pause' : 'Resume'}</Button> },
+                        { header: '', cell: (s) => editable && <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => toggleSchedule.mutate({ r, s })}>{s.active ? 'Pause' : 'Resume'}</Button><Button size="sm" variant="ghost" onClick={() => setRemoving({ r, scheduleId: s.id, label: `the ${s.departureTime} departure` })}>Delete</Button></div> },
                       ]}
                     />
                   </div>
@@ -172,6 +176,7 @@ export default function RoutesPage() {
           </div>
         )}
       </QueryState>
+      <ConfirmDialog open={!!removing} title={`Delete ${removing?.label}?`} message="Anything with passenger bookings is kept for the record: suspend or pause it instead." confirmLabel="Delete" tone="danger" loading={remove.isPending} onClose={() => setRemoving(null)} onConfirm={() => remove.mutate()} />
       <Modal open={creating} onClose={() => setCreating(false)} title="New shared route">
         {creating && <RouteForm points={points.data ?? []} onDone={() => setCreating(false)} />}
       </Modal>

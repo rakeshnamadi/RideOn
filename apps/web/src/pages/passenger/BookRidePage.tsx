@@ -2,7 +2,7 @@ import { useQueries } from '@tanstack/react-query';
 import { Crosshair, MapPin, Navigation } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AreaPolygon, BaseMap, BENGALURU, FitBounds, MapClick, Pin, RouteLine } from '@/components/map';
+import { AreaPolygon, BaseMap, DEFAULT_CENTER, FitBounds, MapClick, Pin, RouteLine } from '@/components/map';
 import { PlaceSearch } from '@/components/map/PlaceSearch';
 import { Alert, Button, Card, cx, MockLabel, StatusBadge } from '@/components/ui';
 import { useToast } from '@/components/ui/toast';
@@ -133,13 +133,13 @@ export default function BookRidePage() {
         <Card>
           <div className="space-y-3">
             <div className={cx('rounded-lg p-2 ring-1', active === 'pickup' ? 'ring-brand-600' : 'ring-transparent')} onFocusCapture={() => setActive('pickup')}>
-              <PlaceSearch label={t('book.pickup')} value={pickup?.label ?? ''} near={pickup ?? BENGALURU} onSelect={(p) => setPoint('pickup', p)} />
+              <PlaceSearch label={t('book.pickup')} value={pickup?.label ?? ''} near={pickup ?? DEFAULT_CENTER} onSelect={(p) => setPoint('pickup', p)} />
               <Button variant="ghost" size="sm" className="mt-1" icon={<Crosshair className="size-4" />} onClick={useMyLocation} loading={locating}>
                 {t('book.useLocation')}
               </Button>
             </div>
             <div className={cx('rounded-lg p-2 ring-1', active === 'drop' ? 'ring-brand-600' : 'ring-transparent')} onFocusCapture={() => setActive('drop')}>
-              <PlaceSearch label={t('book.drop')} value={drop?.label ?? ''} near={pickup ?? BENGALURU} onSelect={(p) => setPoint('drop', p)} />
+              <PlaceSearch label={t('book.drop')} value={drop?.label ?? ''} near={pickup ?? DEFAULT_CENTER} onSelect={(p) => setPoint('drop', p)} />
             </div>
             <div className="flex gap-2" role="radiogroup" aria-label="Which point does a map tap set?">
               {(['pickup', 'drop'] as const).map((f) => (

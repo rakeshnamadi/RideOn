@@ -28,7 +28,7 @@ export function useApiPage<T>(key: QueryKey, path: string, query?: Query) {
  */
 export function useAction<TVars = void, TRes = unknown>(
   fn: (vars: TVars) => Promise<ApiResult<TRes>>,
-  opts: { success?: string | ((res: TRes) => string); invalidate?: QueryKey[]; onSuccess?: (res: TRes) => void; silentError?: boolean } = {},
+  opts: { success?: string | ((res: TRes) => string); invalidate?: QueryKey[]; onSuccess?: (res: TRes) => void; onSettled?: () => void; silentError?: boolean } = {},
 ) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -39,6 +39,7 @@ export function useAction<TVars = void, TRes = unknown>(
       if (opts.success) toast.success(typeof opts.success === 'function' ? opts.success(res) : opts.success);
       opts.onSuccess?.(res);
     },
+    onSettled: () => opts.onSettled?.(),
     onError: (err) => {
       if (!opts.silentError) toast.error(err);
     },

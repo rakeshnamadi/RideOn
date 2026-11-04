@@ -15,7 +15,7 @@
 - Global permissions via `roles`/`permissions`; community permissions via `community_admins.role` → `COMMUNITY_ROLE_PERMISSIONS`.
 - `requireCommunity(perm)` guards every `/communities/:communityId/*` route, and **every query is additionally scoped by the URL's community id**, so a valid id from another community returns `404` (tests: `isolation.test.ts`).
 - Object-level checks on bookings (passenger, assigned driver, or authorised staff), driver documents (owner, super admin, or staff of a community the driver applied to), manifests, payments and offers.
-- Super admins have oversight permissions in every community but **cannot propose or vote on fares**; they review through the separate platform-review step.
+- Super admins hold every permission in every union and assign all roles. Local admins can only manage roles and permissions below their own (`assertCanManageRole`, `DELEGABLE_PERMISSIONS`), cannot change their own role, and the last super admin cannot be removed.
 - The server never trusts client-supplied roles, community ids, fares, driver ids or amounts: fares come from server quotes, amounts from the database, community from the quote/trip/service area.
 
 ## Input, output and transport
@@ -47,6 +47,8 @@
 ## Integrity and audit
 
 - `audit_logs` and `fare_history` are append-only (DB triggers reject UPDATE/DELETE).
+- `activity_logs` records every API request (user, path, status, IP, user agent) for 90 days, viewable by super admins only. Tracking tokens and gateway references are masked in stored paths, and query strings and bodies are never stored. Treat it as personal data under your privacy notice.
+- Sign-ins, failures, blocked attempts and lockouts are written to the audit log.
 - Sensitive actions audited: logins anomalies (token reuse), registrations, password resets, every community decision (membership, documents, vehicles, routes, schedules, areas, policy, admins, queue removals), fare proposals/votes/reviews/publication, bookings created/accepted/completed/cancelled, payments, refunds, statements, exports, user/driver/community status changes, SOS.
 
 ## Production checklist

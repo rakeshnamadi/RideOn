@@ -1,5 +1,5 @@
 export type SystemRole = 'SUPER_ADMIN' | 'COMMUNITY_ADMIN' | 'DRIVER' | 'PASSENGER';
-export type CommunityRole = 'HEAD' | 'ADMIN' | 'APPROVER' | 'OPERATOR';
+export type CommunityRole = 'LOCAL_ADMIN' | 'REPORTER' | 'APPROVER' | 'OPERATOR';
 
 export interface MyCommunity {
   id: string;
@@ -8,6 +8,9 @@ export interface MyCommunity {
   status: string;
   role: CommunityRole;
   permissions: string[];
+  shortName?: string | null;
+  brandColor?: string | null;
+  logoUrl?: string | null;
 }
 
 export interface Me {

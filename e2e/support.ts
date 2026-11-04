@@ -7,9 +7,12 @@ export const ACCOUNTS = {
   kmHead: '9000000002',
   kmAdmin: '9000000003',
   kmApprover: '9000000004',
+  reporter: '9000000006',
   inHead: '9000000005',
   driver1: '9000000010',
+  driver2: '9000000011',
   passenger: '9000000020',
+  passenger2: '9000000021',
 } as const;
 
 export const API = 'http://localhost:4100/api/v1';

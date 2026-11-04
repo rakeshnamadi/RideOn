@@ -4,14 +4,16 @@ _Last updated: 2026-10-30_
 
 ## Summary
 
-**Latest round (2026-10-30):** the UI was redesigned around the positioning **"Your city. Your people. Your ride."**, with the passenger promise ("The freedom to travel your way") and driver promise ("Respect for the people who move your city") carried through the landing page, sign-in, booking screen and driver console. Community rule changes now go through proposals and votes, shared routes follow real roads, the driver console is in Hindi, and ESLint is in place. Payment-gateway and SMS work remain on hold as agreed.
+**Latest round (2026-11-05):** role-based software. Roles are now Super admin, Local admin, Reporter, Approver, Operator and Driver, with per-delegate permissions; the super admin assigns roles from **Users & roles** and gives unions access from **Auto unions**. Unions maintain their own master data and logo; drivers give feedback on union fares and the union replies; reporters prepare and publish reports; every API request goes to a local activity log. Pickup points, routes, schedules, announcements, cities and unions can be deleted unless they have history. The app now centres on pincode 533211 (Ainavilli, Konaseema, Andhra Pradesh), with a Telugu translation. Payment gateway and SMS remain on hold, as agreed.
+
+**Earlier round (2026-10-30):** the UI was redesigned around the positioning **"Your city. Your people. Your ride."**, with the passenger promise ("The freedom to travel your way") and driver promise ("Respect for the people who move your city") carried through the landing page, sign-in, booking screen and driver console. Community rule changes now go through proposals and votes, shared routes follow real roads, the driver console is in Hindi, and ESLint is in place. Payment-gateway and SMS work remain on hold as agreed.
 
 All eight phases are implemented. The API, database and web app run locally, and all automated tests pass. The core flows were also exercised by hand in a browser against the running stack (details below). Items that remain incomplete or unverified are listed under **Known limitations**; none of them are hidden behind TODOs in the code.
 
 | Area | Status |
 |---|---|
 | Monorepo, config, logging, health check | Done |
-| MySQL schema (50 tables), 3 migrations, development seed | Done |
+| MySQL schema (53 tables), 4 migrations, development seed | Done |
 | Auth: register/login, Argon2id, rotating refresh cookies with reuse detection, logout/logout-all, lockout, password reset, suspension | Done |
 | Roles, permissions, community isolation, route guards | Done |
 | Communities, admins, policies, service areas, announcements | Done |
@@ -29,7 +31,9 @@ All eight phases are implemented. The API, database and web app run locally, and
 | Notifications (in-app + Socket.IO) with polling fallback | Done |
 | Four consoles (passenger, driver, community, platform) + public pages | Done |
 | Reports, CSV export, audit log (append-only) | Done |
-| Automated tests | Done — 97 unit/integration tests + 12 browser journeys passing |
+| Union roles, delegation, role assignment, master data and logo, fare feedback, reports, activity log, delete actions | Done |
+| Telugu translation (landing page, passenger flow, driver console) | Done — machine-written; needs review by a native speaker |
+| Automated tests | Done — 114 unit/integration tests + 18 browser journeys passing |
 | ESLint (typescript-eslint, React Hooks rules) | Done — 0 problems |
 | Docs, `.env.example`, Docker Compose | Done — Compose not run (no Docker available) |
 
@@ -86,6 +90,8 @@ All eight phases are implemented. The API, database and web app run locally, and
 
 ## Test results (actually executed)
 
+**Latest run (2026-11-05):** API 98 passed, web 16 passed, Playwright 18 passed; typecheck, lint and build pass. The tables below describe the earlier 2026-10-30 run; `test/integration/union-admin.test.ts` and `e2e/specs/06-union-admin.spec.ts` are the additions.
+
 Command: `npm test` from the repository root (2026-10-30). `npm run typecheck` and `npm run lint` pass, and `npm run build` succeeds for both apps.
 
 **API — 81 passed / 81** (Vitest; integration tests use Supertest against the real MySQL `rideon_test` database)
@@ -139,9 +145,11 @@ Workflow 4 (concurrent seat reservations cannot overbook) is a race a single bro
 | Cancellation fees on cash bookings | Recorded on the booking (and deducted from refunds of prepaid bookings) but not collected. | Decide a collection policy (e.g. add to next fare) with communities. |
 | Shared route paths with routing disabled | Paths come from the routing provider; with `ROUTING_PROVIDER=none` (as in tests) routes fall back to dashed straight segments. | Use a hosted or self-hosted OSRM in production. |
 | Turn-by-turn navigation | Drivers get an OpenStreetMap directions link. | Deep-link to a navigation app, or embed routing. |
-| Translations | Hindi covers the landing page, passenger flow and driver console. Community and platform admin consoles are English only; form validation messages are English. | Add dictionary keys to the admin consoles and more languages (Kannada, Tamil, Telugu, Marathi are already accepted as profile languages). |
+| Translations | Telugu and Hindi cover the landing page, passenger flow and driver console. Telugu has not been reviewed by a native speaker. Community and platform admin consoles are English only; form validation messages are English. | Add dictionary keys to the admin consoles and more languages (Kannada, Tamil, Telugu, Marathi are already accepted as profile languages). |
 | Single-instance assumptions | Socket.IO rooms and rate limits are in memory. | Redis adapter and store before scaling out (see `docs/deployment.md`). |
 | Public map services | Dev defaults use public OSM tiles, Nominatim and the OSRM demo server. `GEOCODING_USER_AGENT` in `.env` has a placeholder contact, which Nominatim's policy asks you to replace. | Set your contact details; use hosted or self-hosted providers in production. |
+| Development database | The dev database was migrated in place, so it keeps its older sample data until you run `npm run db:reset`. | Run it once to load the Konaseema seed. |
+| Super admin and fare votes | Super admins now hold every union permission, including proposing and approving fares, at the owner's request. This replaces the earlier "oversight, not governance" rule. | Revisit before unions rely on the vote as independent. |
 | `npm run db:reset` | Prisma blocks `migrate reset` when run by an AI agent without explicit consent, so the tests use `migrate deploy` plus truncation instead. You can run it yourself. | — |
 
 ## Next steps

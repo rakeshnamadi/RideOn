@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BaseMap, FitBounds, MapClick, Pin } from '@/components/map';
-import { Button, Card, Checkbox, DataTable, Input, PageHeader, QueryState, StatusBadge } from '@/components/ui';
+import { Button, Card, Checkbox, ConfirmDialog, DataTable, Input, PageHeader, QueryState, StatusBadge } from '@/components/ui';
 import { useAction, useApi } from '@/hooks/api';
 import { useCommunity } from '@/layouts/CommunityLayout';
 import { api } from '@/services/api';
@@ -16,6 +16,8 @@ export default function PickupPointsPage() {
   const inv = [['community', id, 'pickup-points'], ['public-community']];
   const create = useAction(() => api.post(`/communities/${id}/pickup-points`, { name, isStand, ...draft! }), { invalidate: inv, success: 'Pickup point added', onSuccess: () => { setDraft(null); setName(''); setIsStand(false); } });
   const toggle = useAction((p: PickupPoint) => api.patch(`/communities/${id}/pickup-points/${p.id}`, { active: !p.active }), { invalidate: inv, success: 'Updated' });
+  const [removing, setRemoving] = useState<PickupPoint | null>(null);
+  const remove = useAction(() => api.del(`/communities/${id}/pickup-points/${removing!.id}`), { invalidate: inv, success: 'Pickup point deleted', onSettled: () => setRemoving(null) });
   return (
     <div>
       <PageHeader title="Auto stands & stops" subtitle="Stands are where drivers queue. Stops are used by shared routes." />
@@ -55,13 +57,14 @@ export default function PickupPointsPage() {
                   { header: 'Type', cell: (p) => (p.isStand ? 'Auto stand' : 'Stop') },
                   { header: 'Location', cell: (p) => `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}` },
                   { header: 'Status', cell: (p) => <StatusBadge status={p.active ? 'ACTIVE' : 'INACTIVE'} /> },
-                  { header: '', cell: (p) => editable && <Button size="sm" variant="ghost" onClick={() => toggle.mutate(p)}>{p.active ? 'Disable' : 'Enable'}</Button> },
+                  { header: '', cell: (p) => editable && <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => toggle.mutate(p)}>{p.active ? 'Disable' : 'Enable'}</Button><Button size="sm" variant="ghost" onClick={() => setRemoving(p)}>Delete</Button></div> },
                 ]}
               />
             </Card>
           </div>
         )}
       </QueryState>
+      <ConfirmDialog open={!!removing} title={`Delete ${removing?.name}?`} message="A point used by a shared route must be removed from that route first. Points with past trips stay in the trip records." confirmLabel="Delete" tone="danger" loading={remove.isPending} onClose={() => setRemoving(null)} onConfirm={() => remove.mutate()} />
     </div>
   );
 }

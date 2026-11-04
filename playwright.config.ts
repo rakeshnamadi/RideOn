@@ -49,6 +49,7 @@ export default defineConfig({
       env: {
         ...(process.env as Record<string, string>),
         NODE_ENV: 'test',
+        ACTIVITY_LOG_IN_TESTS: 'true',
         API_PORT: String(API_PORT),
         DATABASE_URL: e2eDatabaseUrl,
         WEB_ORIGIN: `http://localhost:${WEB_PORT}`,

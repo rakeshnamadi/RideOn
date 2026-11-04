@@ -48,7 +48,7 @@ export default function ServiceAreasPage() {
               {editable && (
                 <Card title="New area">
                   <div className="space-y-3">
-                    <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Koramangala 1st–8th Block" />
+                    <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ainavilli mandal" />
                     <div className="flex gap-2">
                       <Button variant="secondary" size="sm" icon={<Undo2 className="size-4" />} disabled={!vertices.length} onClick={() => setVertices((v) => v.slice(0, -1))}>Undo</Button>
                       <Button variant="ghost" size="sm" disabled={!vertices.length} onClick={() => setVertices([])}>Clear</Button>

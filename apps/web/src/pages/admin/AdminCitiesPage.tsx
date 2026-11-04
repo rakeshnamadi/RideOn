@@ -23,9 +23,10 @@ export default function AdminCitiesPage() {
   const [center, setCenter] = useState<LatLng | null>(null);
   const create = useAction(() => api.post('/admin/cities', { name, state, centerLat: center!.lat, centerLng: center!.lng }), { invalidate: [['admin', 'cities']], success: 'City added', onSuccess: () => { setName(''); setState(''); setCenter(null); } });
   const toggle = useAction((c: City) => api.patch(`/admin/cities/${c.id}`, { active: !c.active }), { invalidate: [['admin', 'cities']], success: 'City updated' });
+  const remove = useAction((c: City) => api.del(`/admin/cities/${c.id}`), { invalidate: [['admin', 'cities']], success: 'City deleted' });
   return (
     <div className="space-y-5">
-      <PageHeader title="Cities" subtitle="Supported cities. Communities operate within a city." />
+      <PageHeader title="Cities" subtitle="Supported cities and districts. Unions operate within one." />
       <Card>
         <QueryState query={q}>
           {(rows) => (
@@ -35,9 +36,9 @@ export default function AdminCitiesPage() {
               columns={[
                 { header: 'City', cell: (r) => `${r.name}, ${r.state}` },
                 { header: 'Timezone', cell: (r) => r.timezone },
-                { header: 'Communities', cell: (r) => r._count.communities },
+                { header: 'Unions', cell: (r) => r._count.communities },
                 { header: 'Status', cell: (r) => <StatusBadge status={r.active ? 'ACTIVE' : 'INACTIVE'} /> },
-                { header: '', cell: (r) => <Button size="sm" variant="ghost" onClick={() => toggle.mutate(r)}>{r.active ? 'Disable' : 'Enable'}</Button> },
+                { header: '', cell: (r) => <div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => toggle.mutate(r)}>{r.active ? 'Disable' : 'Enable'}</Button>{r._count.communities === 0 && <Button size="sm" variant="ghost" onClick={() => remove.mutate(r)}>Delete</Button>}</div> },
               ]}
             />
           )}

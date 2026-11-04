@@ -7,12 +7,12 @@ import { ACCOUNTS, clickMap, freshPhone, sessionFor } from '../support';
  * accepts it, starts it with the passenger's PIN, completes it and records cash.
  */
 test('a new passenger books a regular auto and a driver completes the trip', async ({ browser, page }) => {
-  // ── Driver goes online at a manually placed location inside Koramangala ──
+  // ── Driver goes online at a manually placed location inside Ainavilli ──
   const driver = await sessionFor(browser, ACCOUNTS.driver1);
   await expect(driver.page).toHaveURL(/\/driver$/);
   await expect(driver.page.getByText('Respect for the people who move your city')).toBeVisible();
   await driver.page.getByLabel('Set on the map').check();
-  await clickMap(driver.page, 'Set your location');
+  await clickMap(driver.page, 'Set your location', 30, -30); // off-centre: a stand's pin sits at the centre
   await driver.page.getByRole('button', { name: 'Go online' }).click();
   await expect(driver.page.getByRole('heading', { name: 'Trip requests' })).toBeVisible();
   await expect(driver.page.getByText('Waiting for requests')).toBeVisible();
@@ -36,7 +36,7 @@ test('a new passenger books a regular auto and a driver completes the trip', asy
   await page.getByRole('button', { name: 'See fare' }).click();
   const book = page.getByRole('button', { name: /^Book auto · ₹\d+/ });
   await expect(book).toBeVisible();
-  await expect(page.getByText('Served by Koramangala Auto Drivers Association')).toBeVisible();
+  await expect(page.getByText('Served by Ainavilli Auto Drivers Union')).toBeVisible();
   await book.click();
 
   await expect(page).toHaveURL(/\/app\/bookings\/[a-z0-9]+$/);
@@ -48,7 +48,7 @@ test('a new passenger books a regular auto and a driver completes the trip', asy
   await driver.page.getByRole('button', { name: 'Accept' }).click({ timeout: 30_000 });
   await expect(driver.page.getByText(/Current trip/)).toBeVisible();
   await expect(page.getByText('Driver on the way').first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('KA01AB1234')).toBeVisible();
+  await expect(page.getByText('AP05TA1234')).toBeVisible();
 
   await driver.page.getByRole('button', { name: 'I have arrived' }).click();
   await expect(page.getByText('Driver has arrived').first()).toBeVisible({ timeout: 30_000 });
