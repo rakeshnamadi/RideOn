@@ -55,7 +55,7 @@ export default function LoginPage() {
       </Card>
       {import.meta.env.DEV && (
         <div className="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200">
-          <strong>Development seed accounts</strong> (password <code>Demo@12345</code>): super admin 9000000001 · community head 9000000002 · community admin 9000000003 · approver 9000000004 · other community head 9000000005 · drivers 9000000010–14 · passengers 9000000020, 9000000021.
+          <strong>Development seed accounts</strong> (password <code>Demo@12345</code>): super admin 9000000001 · local admin 9000000002, 9000000003 · approver 9000000004 · other union’s local admin 9000000005 · reporter 9000000006 · drivers 9000000010–14 · passengers 9000000020, 9000000021.
         </div>
       )}
     </AuthShell>
