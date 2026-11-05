@@ -1,6 +1,6 @@
 # Build status
 
-_Last updated: 2026-10-30_
+_Last updated: 2026-11-05_
 
 ## Summary
 
@@ -36,6 +36,7 @@ All eight phases are implemented. The API, database and web app run locally, and
 | Automated tests | Done — 114 unit/integration tests + 18 browser journeys passing |
 | ESLint (typescript-eslint, React Hooks rules) | Done — 0 problems |
 | Docs, `.env.example`, Docker Compose | Done — Compose not run (no Docker available) |
+| Technical documentation (SDLC, sequence diagrams), role-based user manual, marketing presentation | Done — see `Documentation/` |
 
 ## Environment used
 
@@ -148,8 +149,8 @@ Workflow 4 (concurrent seat reservations cannot overbook) is a race a single bro
 | Translations | Telugu and Hindi cover the landing page, passenger flow and driver console. Telugu has not been reviewed by a native speaker. Community and platform admin consoles are English only; form validation messages are English. | Add dictionary keys to the admin consoles and more languages (Kannada, Tamil, Telugu, Marathi are already accepted as profile languages). |
 | Single-instance assumptions | Socket.IO rooms and rate limits are in memory. | Redis adapter and store before scaling out (see `docs/deployment.md`). |
 | Public map services | Dev defaults use public OSM tiles, Nominatim and the OSRM demo server. `GEOCODING_USER_AGENT` in `.env` has a placeholder contact, which Nominatim's policy asks you to replace. | Set your contact details; use hosted or self-hosted providers in production. |
-| Development database | The dev database was migrated in place, so it keeps its older sample data until you run `npm run db:reset`. | Run it once to load the Konaseema seed. |
 | Super admin and fare votes | Super admins now hold every union permission, including proposing and approving fares, at the owner's request. This replaces the earlier "oversight, not governance" rule. | Revisit before unions rely on the vote as independent. |
+| Auth rate limit | `/auth/refresh` shares the limit of 30 requests per 15 minutes per IP with login, and every full page load refreshes. Heavy reloading, or many people behind one IP, can hit `429`. | Give refresh a separate, higher limit before launch. |
 | `npm run db:reset` | Prisma blocks `migrate reset` when run by an AI agent without explicit consent, so the tests use `migrate deploy` plus truncation instead. You can run it yourself. | — |
 
 ## Next steps
