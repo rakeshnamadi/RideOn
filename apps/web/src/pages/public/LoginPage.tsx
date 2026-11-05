@@ -13,12 +13,15 @@ const Schema = z.object({
 });
 type Values = z.infer<typeof Schema>;
 
+/** Development only: prefill the seeded driver Anil Varma. Left out of production builds. */
+const DEV_LOGIN = import.meta.env.DEV && import.meta.env.MODE !== 'test' ? { identifier: '9000000015', password: 'Demo@12345' } : undefined;
+
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
-  const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(Schema) });
+  const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(Schema), defaultValues: DEV_LOGIN });
 
   const onSubmit = handleSubmit(async (v) => {
     setError(null);
