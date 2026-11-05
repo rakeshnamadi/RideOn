@@ -153,7 +153,7 @@ describe('union administration: roles, delegation, master data, feedback, report
       const res = await api.post(`/api/v1/communities/${av}/reports`).set(bearer(reporter)).send({ title: 'Last two weeks', from: new Date(Date.now() - 14 * 86_400_000).toISOString(), to: new Date(Date.now() + 60_000).toISOString() });
       expect(res.status).toBe(201);
       expect(res.body.data.metrics.completedTrips).toBe(12);
-      expect(res.body.data.metrics.drivers.activeMembers).toBe(3);
+      expect(res.body.data.metrics.drivers.activeMembers).toBe(5);
       const id = res.body.data.id;
       await api.patch(`/api/v1/communities/${av}/reports/${id}`).set(bearer(reporter)).send({ notes: 'Evening demand up near Ainavilli Centre.' }).expect(200);
       await api.post(`/api/v1/communities/${av}/reports/${id}/refresh`).set(bearer(reporter)).expect(200);

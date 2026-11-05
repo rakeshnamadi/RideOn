@@ -109,11 +109,36 @@ async function driver(
   return { user: u, driver: d, vehicle };
 }
 
+/**
+ * Spare accounts for manual debugging: two drivers ready to go online in Ainavilli and two
+ * passengers with no history. Adds only the ones missing, so it is safe on a seeded database.
+ */
+async function seedDebugAccounts(passwordHash: string) {
+  const community = await prisma.community.findUniqueOrThrow({ where: { slug: 'ainavilli-autos' } });
+  const drivers = [
+    { name: 'Anil Varma', phone: '+919000000015', licenseNumber: 'AP0520190033333', registration: 'AP05TF1111' },
+    { name: 'Babu Rao', phone: '+919000000016', licenseNumber: 'AP0520180044444', registration: 'AP05TG2222' },
+  ];
+  for (const { name, phone, ...opts } of drivers) {
+    if (await prisma.user.findUnique({ where: { phone } })) continue;
+    await driver(name, phone, passwordHash, { ...opts, communityId: community.id, verified: true, membership: 'APPROVED' });
+  }
+  const passengers = [
+    { name: 'Anjali Nadimpalli', phone: '+919000000022' },
+    { name: 'Ravi Chowdary', phone: '+919000000023' },
+  ];
+  for (const { name, phone } of passengers) {
+    if (await prisma.user.findUnique({ where: { phone } })) continue;
+    await user(name, phone, ['PASSENGER'], passwordHash);
+  }
+}
+
 export async function seedDatabase(client: PrismaClient) {
   if (process.env.NODE_ENV === 'production') throw new Error('Refusing to seed demo data in production');
   prisma = client;
   if (await prisma.user.findFirst({ where: { phone: '+919000000001' } })) {
-    console.log('Database already seeded — run `npm run db:reset` to start fresh.');
+    await seedDebugAccounts(await hashPassword(DEMO_PASSWORD));
+    console.log('Database already seeded (added any missing debug accounts) — run `npm run db:reset` to start fresh.');
     return;
   }
   await seedRoles();
@@ -287,6 +312,7 @@ export async function seedDatabase(client: PrismaClient) {
   const d2 = await driver('Nagaraju Pinnamaraju', '+919000000011', pw, { licenseNumber: 'AP0520180067890', communityId: ainavilli.id, registration: 'AP05TB5678', verified: true, membership: 'APPROVED' });
   await driver('Durga Prasad', '+919000000012', pw, { licenseNumber: 'AP0520210054321', communityId: ainavilli.id, registration: 'AP05TC9012', verified: true, membership: 'APPROVED' });
   await driver('Kiran Kumar', '+919000000013', pw, { licenseNumber: 'AP0520220011111', communityId: ainavilli.id, registration: 'AP05TD3456', verified: false, membership: 'APPLIED' });
+  await seedDebugAccounts(pw);
   await driver('Ramesh Gollapalli', '+919000000014', pw, { licenseNumber: 'AP0520200022222', communityId: amalapuram.id, registration: 'AP05TE7890', verified: true, membership: 'APPROVED' });
 
   await prisma.announcement.create({

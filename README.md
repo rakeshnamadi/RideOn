@@ -101,6 +101,10 @@ All seeded accounts use the password **`Demo@12345`**. They exist only when you 
 | Driver applicant | 9000000013 | Pending membership and verification |
 | Driver, Amalapuram | 9000000014 | |
 | Passengers | 9000000020, 9000000021 | |
+| Spare drivers for debugging, Ainavilli | 9000000015 (Anil Varma), 9000000016 (Babu Rao) | Verified, approved, ready to go online; no trip history |
+| Spare passengers for debugging | 9000000022 (Anjali Nadimpalli), 9000000023 (Ravi Chowdary) | No trip history |
+
+To add the spare accounts to an already seeded database without losing anything, run `npm run db:seed`.
 
 The seed centres on the primary service area, **pincode 533211: Ainavilli mandal, Dr. B.R. Ambedkar Konaseema district, Andhra Pradesh**. It creates two active unions (Ainavilli, Amalapuram Town) and one pending one (Kothapeta), service areas, auto stands, two shared routes with schedules (AV-1, AM-1), approved fare tables, fee schedules, and 12 historical completed trips (clearly marked sample data). Union names and details are placeholders, not real organisations.
 
